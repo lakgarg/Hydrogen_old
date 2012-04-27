@@ -45,10 +45,11 @@ struct cpufreq_interactive_cpuinfo {
 	int idling;
 	u64 target_set_time;
 	u64 target_set_time_in_idle;
-	u64 target_validate_time;
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *freq_table;
 	unsigned int target_freq;
+	unsigned int floor_freq;
+	u64 floor_validate_time;
 	int governor_enabled;
 };
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
@@ -208,10 +209,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 	new_freq = pcpu->freq_table[index].frequency;
 
 	/*
-	 * Do not scale down unless we have been at this frequency for the
-	 * minimum sample time since last validated.
+	 * Do not scale below floor_freq unless we have been at or above the
+	 * floor frequency for the minimum sample time since last validated.
 	 */
-	if (new_freq < pcpu->target_freq) {
+	if (new_freq < pcpu->floor_freq) {
 		if (pcpu->timer_run_time - pcpu->target_validate_time
 		    < min_sample_time) {
 			trace_cpufreq_interactive_notyet(data, cpu_load,
@@ -220,7 +221,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 		}
 	}
 
-	pcpu->target_validate_time = pcpu->timer_run_time;
+	pcpu->floor_freq = new_freq;
+	pcpu->floor_validate_time = pcpu->timer_run_time;
 
 	if (pcpu->target_freq == new_freq) {
 		trace_cpufreq_interactive_already(data, cpu_load,
@@ -449,12 +451,12 @@ static void cpufreq_interactive_boost(void)
 		}
 
 		/*
-		 * Refresh time at which current (possibly being
-		 * boosted) speed last validated (reset timer for
-		 * allowing speed to drop).
+		 * Set floor freq and (re)start timer for when last
+		 * validated.
 		 */
 
-		pcpu->target_validate_time = ktime_to_us(ktime_get());
+		pcpu->floor_freq = hispeed_freq;
+		pcpu->floor_validate_time = ktime_to_us(ktime_get());
 	}
 
 	spin_unlock_irqrestore(&up_cpumask_lock, flags);
@@ -733,7 +735,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			pcpu->target_set_time_in_idle =
 				get_cpu_idle_time_us(j,
 					     &pcpu->target_set_time);
-			pcpu->target_validate_time =
+			pcpu->floor_freq = pcpu->target_freq;
+			pcpu->floor_validate_time =
 				pcpu->target_set_time;
 			pcpu->governor_enabled = 1;
 			smp_wmb();
