@@ -463,7 +463,7 @@ int dev_pm_opp_add(struct device *dev, unsigned long freq, unsigned long u_volt)
 	srcu_notifier_call_chain(&dev_opp->head, OPP_EVENT_ADD, new_opp);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dev_pm_opp_add);
+EXPORT_SYMBOL_GPL(opp_add);
 
 /**
  * opp_set_availability() - helper to set the availability of an opp
@@ -900,9 +900,6 @@ int dev_pm_opp_set_sharing_cpus(struct device *cpu_dev, cpumask_var_t cpumask)
 
 	return 0;
 }
-<<<<<<< HEAD
-EXPORT_SYMBOL_GPL(of_init_opp_table);
-=======
 EXPORT_SYMBOL_GPL(dev_pm_opp_set_sharing_cpus);
 
 /*
@@ -962,5 +959,4 @@ put_cpu_node:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_of_get_sharing_cpus);
->>>>>>> 23bb6cbdabf9... PM / OPP: Prefix exported opp routines with dev_pm_opp_
 #endif
