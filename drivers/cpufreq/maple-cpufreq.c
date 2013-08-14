@@ -74,8 +74,6 @@ static struct freq_attr *maple_cpu_freqs_attr[] = {
  */
 static int maple_pmode_cur;
 
-static DEFINE_MUTEX(maple_switch_mutex);
-
 static const u32 *maple_pmode_data;
 static int maple_pmode_max;
 
@@ -143,21 +141,7 @@ static int maple_cpufreq_verify(struct cpufreq_policy *policy)
 static int maple_cpufreq_target(struct cpufreq_policy *policy,
 	unsigned int index)
 {
-	struct cpufreq_freqs freqs;
-	int rc;
-
-	mutex_lock(&maple_switch_mutex);
-
-	freqs.old = maple_cpu_freqs[maple_pmode_cur].frequency;
-	freqs.new = maple_cpu_freqs[index].frequency;
-
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
-	rc = maple_scom_switch_freq(index);
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
-
-	mutex_unlock(&maple_switch_mutex);
-
-	return rc;
+	return maple_scom_switch_freq(index);
 }
 
 static unsigned int maple_cpufreq_get_speed(unsigned int cpu)
