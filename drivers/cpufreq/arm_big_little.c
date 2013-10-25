@@ -192,58 +192,21 @@ bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
 static int bL_cpufreq_set_target(struct cpufreq_policy *policy,
 		unsigned int index)
 {
-	u32 cpu = policy->cpu, cur_cluster, new_cluster, actual_cluster;
-	unsigned int freqs_new;
-
-	cur_cluster = cpu_to_cluster(cpu);
-	new_cluster = actual_cluster = per_cpu(physical_cluster, cpu);
-
-	freqs_new = freq_table[cur_cluster][index].frequency;
-
-	if (is_bL_switching_enabled()) {
-		if ((actual_cluster == A15_CLUSTER) &&
-				(freqs_new < clk_big_min)) {
-			new_cluster = A7_CLUSTER;
-		} else if ((actual_cluster == A7_CLUSTER) &&
-				(freqs_new > clk_little_max)) {
-			new_cluster = A15_CLUSTER;
-		}
-	}
+	struct cpufreq_freqs freqs;
+	u32 cpu = policy->cpu, cur_cluster;
+	int ret = 0;
 
 	return bL_cpufreq_set_rate(cpu, actual_cluster, new_cluster, freqs_new);
 }
 
-static inline u32 get_table_count(struct cpufreq_frequency_table *table)
-{
-	int count;
+	freqs.old = bL_cpufreq_get(policy->cpu);
+	freqs.new = freq_table[cur_cluster][index].frequency;
 
-	for (count = 0; table[count].frequency != CPUFREQ_TABLE_END; count++)
-		;
+	pr_debug("%s: cpu: %d, cluster: %d, oldfreq: %d, target freq: %d, new freq: %d\n",
+			__func__, cpu, cur_cluster, freqs.old, freqs.new,
+			freqs.new);
 
-	return count;
-}
-
-/* get the minimum frequency in the cpufreq_frequency_table */
-static inline u32 get_table_min(struct cpufreq_frequency_table *table)
-{
-	int i;
-	uint32_t min_freq = ~0;
-	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
-		if (table[i].frequency < min_freq)
-			min_freq = table[i].frequency;
-	return min_freq;
-}
-
-/* get the maximum frequency in the cpufreq_frequency_table */
-static inline u32 get_table_max(struct cpufreq_frequency_table *table)
-{
-	int i;
-	uint32_t max_freq = 0;
-	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++)
-		if (table[i].frequency > max_freq)
-			max_freq = table[i].frequency;
-	return max_freq;
-}
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
 static int merge_cluster_tables(void)
 {
@@ -491,7 +454,7 @@ static struct cpufreq_driver bL_cpufreq_driver = {
 					CPUFREQ_HAVE_GOVERNOR_PER_POLICY,
 	.verify			= cpufreq_generic_frequency_table_verify,
 	.target_index		= bL_cpufreq_set_target,
-	.get			= bL_cpufreq_get_rate,
+	.get			= bL_cpufreq_get,
 	.init			= bL_cpufreq_init,
 	.exit			= bL_cpufreq_exit,
 	.attr			= cpufreq_generic_attr,

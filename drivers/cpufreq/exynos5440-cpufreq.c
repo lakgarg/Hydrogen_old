@@ -220,20 +220,13 @@ static unsigned int exynos_getspeed(unsigned int cpu)
 	return dvfs_info->cur_frequency;
 }
 
-static int exynos_target(struct cpufreq_policy *policy,
-			  unsigned int target_freq,
-			  unsigned int relation)
+static int exynos_target(struct cpufreq_policy *policy, unsigned int index)
 {
-	unsigned int index, tmp;
-	int ret = 0, i;
+	unsigned int tmp;
+	int i;
 	struct cpufreq_frequency_table *freq_table = dvfs_info->freq_table;
 
 	mutex_lock(&cpufreq_lock);
-
-	ret = cpufreq_frequency_table_target(policy, freq_table,
-					   target_freq, relation, &index);
-	if (ret)
-		goto out;
 
 	freqs.old = dvfs_info->cur_frequency;
 	freqs.new = freq_table[index].frequency;
@@ -248,9 +241,8 @@ static int exynos_target(struct cpufreq_policy *policy,
 
 		__raw_writel(tmp, dvfs_info->base + XMU_C0_3_PSTATE + i * 4);
 	}
-out:
 	mutex_unlock(&cpufreq_lock);
-	return ret;
+	return 0;
 }
 
 static void exynos_cpufreq_work(struct work_struct *work)
@@ -339,9 +331,9 @@ static int exynos_cpufreq_cpu_init(struct cpufreq_policy *policy)
 }
 
 static struct cpufreq_driver exynos_driver = {
-	.flags		= CPUFREQ_STICKY | CPUFREQ_ASYNC_NOTIFICATION,
-	.verify		= exynos_verify_speed,
-	.target		= exynos_target,
+	.flags		= CPUFREQ_STICKY,
+	.verify		= cpufreq_generic_frequency_table_verify,
+	.target_index	= exynos_target,
 	.get		= exynos_getspeed,
 	.init		= exynos_cpufreq_cpu_init,
 	.name		= CPUFREQ_NAME,

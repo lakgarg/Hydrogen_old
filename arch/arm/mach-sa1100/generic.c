@@ -62,50 +62,6 @@ static const unsigned short cclk_frequency_100khz[NR_FREQS] = {
 	2802	/* 280.2 MHz */
 };
 
-/* rounds up(!)  */
-unsigned int sa11x0_freq_to_ppcr(unsigned int khz)
-{
-	int i;
-
-	khz /= 100;
-
-	for (i = 0; i < NR_FREQS; i++)
-		if (cclk_frequency_100khz[i] >= khz)
-			break;
-
-	return i;
-}
-
-unsigned int sa11x0_ppcr_to_freq(unsigned int idx)
-{
-	unsigned int freq = 0;
-	if (idx < NR_FREQS)
-		freq = cclk_frequency_100khz[idx] * 100;
-	return freq;
-}
-
-
-/* make sure that only the "userspace" governor is run -- anything else wouldn't make sense on
- * this platform, anyway.
- */
-int sa11x0_verify_speed(struct cpufreq_policy *policy)
-{
-	unsigned int tmp;
-	if (policy->cpu)
-		return -EINVAL;
-
-	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq, policy->cpuinfo.max_freq);
-
-	/* make sure that at least one frequency is within the policy */
-	tmp = cclk_frequency_100khz[sa11x0_freq_to_ppcr(policy->min)] * 100;
-	if (tmp > policy->max)
-		policy->max = tmp;
-
-	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq, policy->cpuinfo.max_freq);
-
-	return 0;
-}
-
 unsigned int sa11x0_getspeed(unsigned int cpu)
 {
 	if (cpu)

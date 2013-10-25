@@ -49,6 +49,15 @@ static DEFINE_MUTEX(cpufreq_governor_lock);
 static LIST_HEAD(cpufreq_policy_list);
 
 #ifdef CONFIG_HOTPLUG_CPU
+/* This one keeps track of the previously set governor of a removed CPU */
+static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
+#endif
+
+static inline bool has_target(void)
+{
+	return cpufreq_driver->target_index || cpufreq_driver->target;
+}
+
 /*
  * This one keeps track of the previously set governor and user-set
  * min/max freq of a removed CPU
@@ -1796,12 +1805,19 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 	pr_debug("target for CPU %u: %u kHz, relation %u, requested %u kHz\n",
 			policy->cpu, target_freq, relation, old_target_freq);
 
+	/*
+	 * This might look like a redundant call as we are checking it again
+	 * after finding index. But it is left intentionally for cases where
+	 * exactly same freq is called again and so we can save on few function
+	 * calls.
+	 */
+	if (target_freq == policy->cur)
+		return 0;
+
 	if (cpufreq_driver->target)
 		retval = cpufreq_driver->target(policy, target_freq, relation);
 	else if (cpufreq_driver->target_index) {
 		struct cpufreq_frequency_table *freq_table;
-		struct cpufreq_freqs freqs;
-		bool notify;
 		int index;
 
 		freq_table = cpufreq_frequency_get_table(policy->cpu);
@@ -1817,42 +1833,10 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 			goto out;
 		}
 
-		if (freq_table[index].frequency == policy->cur) {
+		if (freq_table[index].frequency == policy->cur)
 			retval = 0;
-			goto out;
-		}
-
-		notify = !(cpufreq_driver->flags & CPUFREQ_ASYNC_NOTIFICATION);
-
-		if (notify) {
-			freqs.old = policy->cur;
-			freqs.new = freq_table[index].frequency;
-			freqs.flags = 0;
-
-			pr_debug("%s: cpu: %d, oldfreq: %u, new freq: %u\n",
-					__func__, policy->cpu, freqs.old,
-					freqs.new);
-
-			cpufreq_notify_transition(policy, &freqs,
-					CPUFREQ_PRECHANGE);
-		}
-
-		retval = cpufreq_driver->target_index(policy, index);
-		if (retval)
-			pr_err("%s: Failed to change cpu frequency: %d\n",
-					__func__, retval);
-
-		if (notify) {
-			/*
-			 * Notify with old freq in case we failed to change
-			 * frequency
-			 */
-			if (retval)
-				freqs.new = freqs.old;
-
-			cpufreq_notify_transition(policy, &freqs,
-					CPUFREQ_POSTCHANGE);
-		}
+		else
+			retval = cpufreq_driver->target_index(policy, index);
 	}
 
 out:
