@@ -120,6 +120,7 @@ static struct freq_attr *kirkwood_cpufreq_attr[] = {
 };
 
 static struct cpufreq_driver kirkwood_cpufreq_driver = {
+	.flags	= CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.get	= kirkwood_cpufreq_get_cpu_frequency,
 	.verify	= cpufreq_generic_frequency_table_verify,
 	.target_index = kirkwood_cpufreq_target,
