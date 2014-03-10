@@ -219,13 +219,16 @@ EXPORT_SYMBOL_GPL(cpufreq_frequency_table_get_index);
  */
 static ssize_t show_available_freqs(struct cpufreq_policy *policy, char *buf, bool show_boost)
 {
+	unsigned int i = 0;
 	ssize_t count = 0;
-	struct cpufreq_frequency_table *pos, *table = policy->freq_table;
+	struct cpufreq_frequency_table *table = policy->freq_table;
 
 	if (!table)
 		return -ENODEV;
 
-	cpufreq_for_each_valid_entry(pos, table) {
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
+		if (table[i].frequency == CPUFREQ_ENTRY_INVALID)
+			continue;
 		/*
 		 * show_boost = true and driver_data = BOOST freq
 		 * display BOOST freqs
