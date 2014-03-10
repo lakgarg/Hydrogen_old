@@ -180,7 +180,7 @@ static int __init us3_freq_cpu_init(struct cpufreq_policy *policy)
 static int us3_freq_cpu_exit(struct cpufreq_policy *policy)
 {
 	if (cpufreq_us3_driver)
-		us3_set_cpu_divider_index(policy, 0);
+		us3_freq_target(policy, 0);
 
 	return 0;
 }

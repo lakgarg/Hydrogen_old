@@ -323,7 +323,7 @@ static int __init us2e_freq_cpu_init(struct cpufreq_policy *policy)
 static int us2e_freq_cpu_exit(struct cpufreq_policy *policy)
 {
 	if (cpufreq_us2e_driver)
-		us2e_set_cpu_divider_index(policy, 0);
+		us2e_freq_target(policy, 0);
 
 	return 0;
 }
