@@ -121,7 +121,7 @@ static int loongson2_cpufreq_verify(struct cpufreq_policy *policy)
 
 static int loongson2_cpufreq_exit(struct cpufreq_policy *policy)
 {
-	clk_put(cpuclk);
+	clk_put(policy->clk);
 	return 0;
 }
 
