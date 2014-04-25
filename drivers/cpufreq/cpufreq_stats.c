@@ -357,10 +357,16 @@ static void cpufreq_powerstats_free(void)
 static int __cpufreq_stats_create_table(struct cpufreq_policy *policy,
 		struct cpufreq_frequency_table *table, int count)
 {
-	unsigned int i, j, ret = 0;
+	unsigned int i, count = 0, ret = 0;
 	struct cpufreq_stats *stat;
 	unsigned int alloc_size;
 	unsigned int cpu = policy->cpu;
+	struct cpufreq_frequency_table *pos, *table;
+
+	table = cpufreq_frequency_get_table(cpu);
+	if (unlikely(!table))
+		return 0;
+
 	if (per_cpu(cpufreq_stats_table, cpu))
 		return -EBUSY;
 	stat = kzalloc(sizeof(*stat), GFP_KERNEL);
@@ -378,6 +384,8 @@ static int __cpufreq_stats_create_table(struct cpufreq_policy *policy,
 	stat->cpu = cpu;
 	per_cpu(cpufreq_stats_table, cpu) = stat;
 
+	cpufreq_for_each_valid_entry(pos, table)
+		count++;
 
 	alloc_size = count * sizeof(int) + count * sizeof(u64);
 
@@ -396,15 +404,11 @@ static int __cpufreq_stats_create_table(struct cpufreq_policy *policy,
 #ifdef CONFIG_CPU_FREQ_STAT_DETAILS
 	stat->trans_table = stat->freq_table + count;
 #endif
-	j = 0;
-	for (i = 0; table[i].frequency != CPUFREQ_TABLE_END; i++) {
-		unsigned int freq = table[i].frequency;
-		if (freq == CPUFREQ_ENTRY_INVALID)
-			continue;
-		if (freq_table_get_index(stat, freq) == -1)
-			stat->freq_table[j++] = freq;
-	}
-	stat->state_num = j;
+	i = 0;
+	cpufreq_for_each_valid_entry(pos, table)
+		if (freq_table_get_index(stat, pos->frequency) == -1)
+			stat->freq_table[i++] = pos->frequency;
+	stat->state_num = i;
 	spin_lock(&cpufreq_stats_lock);
 	stat->last_time = get_jiffies_64();
 	stat->last_index = freq_table_get_index(stat, policy->cur);
