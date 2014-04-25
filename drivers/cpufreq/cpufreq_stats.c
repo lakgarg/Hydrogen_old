@@ -357,11 +357,11 @@ static void cpufreq_powerstats_free(void)
 static int __cpufreq_stats_create_table(struct cpufreq_policy *policy,
 		struct cpufreq_frequency_table *table, int count)
 {
-	unsigned int i, ret = 0;
+	unsigned int i, count = 0, ret = 0;
 	struct cpufreq_stats *stat;
 	unsigned int alloc_size;
 	unsigned int cpu = policy->cpu;
-	struct cpufreq_frequency_table *pos;
+	struct cpufreq_frequency_table *pos, *table;
 
 	table = cpufreq_frequency_get_table(cpu);
 	if (unlikely(!table))
