@@ -15,7 +15,6 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/slab.h>
-#include <linux/cpufreq.h>
 #include <linux/device.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
@@ -599,117 +598,11 @@ int dev_pm_opp_disable(struct device *dev, unsigned long freq)
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_disable);
 
-#ifdef CONFIG_CPU_FREQ
 /**
- * dev_pm_opp_init_cpufreq_table() - create a cpufreq table for a device
- * @dev:	device for which we do this operation
- * @table:	Cpufreq table returned back to caller
- *
- * Generate a cpufreq table for a provided device- this assumes that the
- * opp list is already initialized and ready for usage.
- *
- * Locking: This function must be called under rcu_read_lock(). dev_opp is a RCU
- * protected pointer. The reason for the same is that the opp pointer which is
- * returned will remain valid for use with opp_get_{voltage, freq} only while
- * under the locked area. The pointer returned must be used prior to unlocking
- * with rcu_read_unlock() to maintain the integrity of the pointer.
+ * dev_pm_opp_get_notifier() - find notifier_head of the device with opp
+ * @dev:	device pointer used to lookup device OPPs.
  */
 struct srcu_notifier_head *dev_pm_opp_get_notifier(struct device *dev)
-{
-	struct device_opp *dev_opp = _find_device_opp(dev);
-
-	if (IS_ERR(dev_opp))
-		return ERR_CAST(dev_opp); /* matching type */
-
-	return &dev_opp->srcu_head;
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_get_notifier);
-
-#ifdef CONFIG_OF
-/**
- * dev_pm_opp_of_remove_table() - Free OPP table entries created from static DT
- *				  entries
- * @dev:	device pointer used to lookup device OPPs.
- *
- * Returns -EINVAL for bad pointers, -ENODEV if the device is not found, -ENOMEM
- * if no memory available for the operation (table is not populated), returns 0
- * if successful and table is populated.
- *
- * WARNING: It is  important for the callers to ensure refreshing their copy of
- * the table if any of the mentioned functions have been invoked in the interim.
- *
- * Locking: The internal device_opp and opp structures are RCU protected.
- * Since we just use the regular accessor functions to access the internal data
- * structures, we use RCU read lock inside this function. As a result, users of
- * this function DONOT need to use explicit locks for invoking.
- */
-void dev_pm_opp_of_remove_table(struct device *dev)
-{
-	struct dev_pm_opp *opp;
-	struct cpufreq_frequency_table *freq_table = NULL;
-	int i, max_opps, ret = 0;
-	unsigned long rate;
-
-	rcu_read_lock();
-
-	max_opps = dev_pm_opp_get_opp_count(dev);
-	if (max_opps <= 0) {
-		ret = max_opps ? max_opps : -ENODATA;
-		goto out;
-	}
-
-	freq_table = kzalloc(sizeof(*freq_table) * (max_opps + 1), GFP_KERNEL);
-	if (!freq_table) {
-		ret = -ENOMEM;
-		goto out;
-	}
-
-	for (i = 0, rate = 0; i < max_opps; i++, rate++) {
-		/* find next rate */
-		opp = dev_pm_opp_find_freq_ceil(dev, &rate);
-		if (IS_ERR(opp)) {
-			ret = PTR_ERR(opp);
-			goto out;
-		}
-		freq_table[i].driver_data = i;
-		freq_table[i].frequency = rate / 1000;
-	}
-
-	freq_table[i].driver_data = i;
-	freq_table[i].frequency = CPUFREQ_TABLE_END;
-
-	*table = &freq_table[0];
-
-out:
-	rcu_read_unlock();
-	if (ret)
-		kfree(freq_table);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_of_cpumask_remove_table);
-
-/**
- * dev_pm_opp_free_cpufreq_table() - free the cpufreq table
- * @dev:	device for which we do this operation
- * @table:	table to free
- *
- * Free up the table allocated by dev_pm_opp_init_cpufreq_table
- */
-void dev_pm_opp_free_cpufreq_table(struct device *dev,
-				struct cpufreq_frequency_table **table)
-{
-	if (!table)
-		return;
-
-	kfree(*table);
-	*table = NULL;
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_free_cpufreq_table);
-#endif		/* CONFIG_CPU_FREQ */
-
-/* Initializes OPP tables based on new bindings */
-static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 {
 	struct device_opp *dev_opp = find_device_opp(dev);
 
