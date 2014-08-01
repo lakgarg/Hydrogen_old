@@ -193,3 +193,4 @@ config ACPI_CPPC_CPUFREQ
 	  support for its operation.
 
 	  If in doubt, say N.
+	  This adds the CPUFreq driver support for TEGRA SOCs.
