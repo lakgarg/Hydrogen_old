@@ -79,6 +79,7 @@ struct dev_pm_opp {
  *		however addition is possible and is secured by dev_opp_list_lock
  * @dev:	device pointer
  * @srcu_head:	notifier head to notify the OPP availability changes.
+ * @rcu_head:	RCU callback head used for deferred freeing
  * @opp_list:	list of opps
  *
  * This is an internal data structure maintaining the link to opps attached to
@@ -90,6 +91,7 @@ struct device_opp {
 
 	struct device *dev;
 	struct srcu_notifier_head srcu_head;
+	struct rcu_head rcu_head;
 	struct list_head opp_list;
 };
 
@@ -498,6 +500,76 @@ int dev_pm_opp_add(struct device *dev, unsigned long freq, unsigned long u_volt)
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_add);
 
+static void kfree_opp_rcu(struct rcu_head *head)
+{
+	struct dev_pm_opp *opp = container_of(head, struct dev_pm_opp, rcu_head);
+
+	kfree_rcu(opp, rcu_head);
+}
+
+static void kfree_device_rcu(struct rcu_head *head)
+{
+	struct device_opp *device_opp = container_of(head, struct device_opp, rcu_head);
+
+	kfree(device_opp);
+}
+
+void __dev_pm_opp_remove(struct device_opp *dev_opp, struct dev_pm_opp *opp)
+{
+	/*
+	 * Notify the changes in the availability of the operable
+	 * frequency/voltage list.
+	 */
+	srcu_notifier_call_chain(&dev_opp->srcu_head, OPP_EVENT_REMOVE, opp);
+	list_del_rcu(&opp->node);
+	call_srcu(&dev_opp->srcu_head.srcu, &opp->rcu_head, kfree_opp_rcu);
+
+	if (list_empty(&dev_opp->opp_list)) {
+		list_del_rcu(&dev_opp->node);
+		call_srcu(&dev_opp->srcu_head.srcu, &dev_opp->rcu_head,
+			  kfree_device_rcu);
+	}
+}
+
+/**
+ * dev_pm_opp_remove()  - Remove an OPP from OPP list
+ * @dev:	device for which we do this operation
+ * @freq:	OPP to remove with matching 'freq'
+ *
+ * This function removes an opp from the opp list.
+ */
+void dev_pm_opp_remove(struct device *dev, unsigned long freq)
+{
+	struct dev_pm_opp *opp;
+	struct device_opp *dev_opp;
+	bool found = false;
+
+	/* Hold our list modification lock here */
+	mutex_lock(&dev_opp_list_lock);
+
+	dev_opp = find_device_opp(dev);
+	if (IS_ERR(dev_opp))
+		goto unlock;
+
+	list_for_each_entry(opp, &dev_opp->opp_list, node) {
+		if (opp->rate == freq) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found) {
+		dev_warn(dev, "%s: Couldn't find OPP with freq: %lu\n",
+			 __func__, freq);
+		goto unlock;
+	}
+
+	__dev_pm_opp_remove(dev_opp, opp);
+unlock:
+	mutex_unlock(&dev_opp_list_lock);
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_remove);
+
 /**
  * opp_set_availability() - helper to set the availability of an opp
  * @dev:		device for which we do this operation
@@ -703,63 +775,35 @@ static int _of_add_opp_table_v1(struct device *dev)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dev_pm_opp_set_sharing_cpus);
+EXPORT_SYMBOL_GPL(of_init_opp_table);
 
-/*
- * Works only for OPP v2 bindings.
+/**
+ * of_free_opp_table() - Free OPP table entries created from static DT entries
+ * @dev:	device pointer used to lookup device OPPs.
  *
- * cpumask should be already set to mask of cpu_dev->id.
- * Returns -ENOENT if operating-points-v2 bindings aren't supported.
+ * Free OPPs created using static entries present in DT.
  */
-int dev_pm_opp_of_get_sharing_cpus(struct device *cpu_dev, cpumask_var_t cpumask)
+void of_free_opp_table(struct device *dev)
 {
-	struct device_node *np, *tmp_np;
-	struct device *tcpu_dev;
-	int cpu, ret = 0;
+	struct device_opp *dev_opp = find_device_opp(dev);
+	struct dev_pm_opp *opp, *tmp;
 
-	/* Get OPP descriptor node */
-	np = _of_get_opp_desc_node(cpu_dev);
-	if (!np) {
-		dev_dbg(cpu_dev, "%s: Couldn't find opp node: %ld\n", __func__,
-			PTR_ERR(np));
-		return -ENOENT;
+	/* Check for existing list for 'dev' */
+	dev_opp = find_device_opp(dev);
+	if (WARN(IS_ERR(dev_opp), "%s: dev_opp: %ld\n", dev_name(dev),
+		 PTR_ERR(dev_opp)))
+		return;
+
+	/* Hold our list modification lock here */
+	mutex_lock(&dev_opp_list_lock);
+
+	/* Free static OPPs */
+	list_for_each_entry_safe(opp, tmp, &dev_opp->opp_list, node) {
+		if (!opp->dynamic)
+			__dev_pm_opp_remove(dev_opp, opp);
 	}
 
-	/* OPPs are shared ? */
-	if (!of_property_read_bool(np, "opp-shared"))
-		goto put_cpu_node;
-
-	for_each_possible_cpu(cpu) {
-		if (cpu == cpu_dev->id)
-			continue;
-
-		tcpu_dev = get_cpu_device(cpu);
-		if (!tcpu_dev) {
-			dev_err(cpu_dev, "%s: failed to get cpu%d device\n",
-				__func__, cpu);
-			ret = -ENODEV;
-			goto put_cpu_node;
-		}
-
-		/* Get OPP descriptor node */
-		tmp_np = _of_get_opp_desc_node(tcpu_dev);
-		if (!tmp_np) {
-			dev_err(tcpu_dev, "%s: Couldn't find opp node: %ld\n",
-				__func__, PTR_ERR(tmp_np));
-			ret = PTR_ERR(tmp_np);
-			goto put_cpu_node;
-		}
-
-		/* CPUs are sharing opp node */
-		if (np == tmp_np)
-			cpumask_set_cpu(cpu, cpumask);
-
-		of_node_put(tmp_np);
-	}
-
-put_cpu_node:
-	of_node_put(np);
-	return ret;
+	mutex_unlock(&dev_opp_list_lock);
 }
-EXPORT_SYMBOL_GPL(dev_pm_opp_of_get_sharing_cpus);
+EXPORT_SYMBOL_GPL(of_free_opp_table);
 #endif
