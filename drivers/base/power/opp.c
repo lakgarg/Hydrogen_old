@@ -765,6 +765,7 @@ free_table:
 
 	return &dev_opp->srcu_head;
 }
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_notifier);
 
 /* Initializes OPP tables based on old-deprecated bindings */
 static int _of_add_opp_table_v1(struct device *dev)
