@@ -1794,7 +1794,10 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 		target_freq = policy->min;
 
 	pr_debug("target for CPU %u: %u kHz, relation %u, requested %u kHz\n",
-			policy->cpu, target_freq, relation, old_target_freq);
+		 policy->cpu, target_freq, relation, old_target_freq);
+
+	/* Save last value to restore later on errors */
+	policy->restore_freq = policy->cur;
 
 	if (cpufreq_driver->target)
 		retval = cpufreq_driver->target(policy, target_freq, relation);
