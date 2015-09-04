@@ -11,8 +11,6 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
 #include <linux/err.h>
@@ -127,12 +125,12 @@ int dev_pm_opp_set_sharing_cpus(struct device *cpu_dev, cpumask_var_t cpumask)
 	struct device *dev;
 	int cpu, ret = 0;
 
-	mutex_lock(&dev_opp_list_lock);
+	rcu_read_lock();
 
 	dev_opp = _find_device_opp(cpu_dev);
 	if (IS_ERR(dev_opp)) {
 		ret = -EINVAL;
-		goto unlock;
+		goto out_rcu_read_unlock;
 	}
 
 	for_each_cpu(cpu, cpumask) {
@@ -153,8 +151,8 @@ int dev_pm_opp_set_sharing_cpus(struct device *cpu_dev, cpumask_var_t cpumask)
 			continue;
 		}
 	}
-unlock:
-	mutex_unlock(&dev_opp_list_lock);
+out_rcu_read_unlock:
+	rcu_read_unlock();
 
 	return 0;
 }

@@ -11,9 +11,6 @@
  * published by the Free Software Foundation.
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
-#include <linux/clk.h>
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/init.h>
@@ -51,7 +48,6 @@ DEFINE_MUTEX(dev_opp_list_lock);
  *
  * For Writers, this function must be called with dev_opp_list_lock held.
  */
-
 struct device_opp *_find_device_opp(struct device *dev)
 {
 	struct device_opp *tmp_dev_opp, *dev_opp = ERR_PTR(-ENODEV);
