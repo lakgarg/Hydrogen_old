@@ -106,22 +106,32 @@ static inline struct srcu_notifier_head *dev_pm_opp_get_notifier(
 #endif		/* CONFIG_PM_OPP */
 
 #if defined(CONFIG_PM_OPP) && defined(CONFIG_OF)
-int of_init_opp_table(struct device *dev);
+int of_add_opp_table(struct device *dev);
+void of_remove_opp_table(struct device *dev);
+int of_cpumask_add_opp_table(cpumask_var_t cpumask);
+void of_cpumask_remove_opp_table(cpumask_var_t cpumask);
+int of_get_cpus_sharing_opps(struct device *cpu_dev, cpumask_var_t cpumask);
+int set_cpus_sharing_opps(struct device *cpu_dev, cpumask_var_t cpumask);
 #else
-static inline int of_init_opp_table(struct device *dev)
+static inline int of_add_opp_table(struct device *dev)
 {
 	return -EINVAL;
 }
-#endif
 
-#if defined(CONFIG_CPU_FREQ) && defined(CONFIG_PM_OPP)
-int dev_pm_opp_init_cpufreq_table(struct device *dev,
-			    struct cpufreq_frequency_table **table);
-void dev_pm_opp_free_cpufreq_table(struct device *dev,
-				struct cpufreq_frequency_table **table);
-#else
-static inline int dev_pm_opp_init_cpufreq_table(struct device *dev,
-			    struct cpufreq_frequency_table **table)
+static inline void of_remove_opp_table(struct device *dev)
+{
+}
+
+static inline int of_cpumask_add_opp_table(cpumask_var_t cpumask)
+{
+	return -ENOSYS;
+}
+
+static inline void of_cpumask_remove_opp_table(cpumask_var_t cpumask)
+{
+}
+
+static inline int of_get_cpus_sharing_opps(struct device *cpu_dev, cpumask_var_t cpumask)
 {
 	return -EINVAL;
 }

@@ -385,7 +385,10 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_find_freq_floor);
  *
  * This function adds an opp definition to the opp list and returns status.
  * The opp is made available by default and it can be controlled using
- * dev_pm_opp_enable/disable functions.
+ * dev_pm_opp_enable/disable functions and may be removed by dev_pm_opp_remove.
+ *
+ * NOTE: "dynamic" parameter impacts OPPs added by the of_add_opp_table and
+ * freed by of_remove_opp_table.
  *
  * Locking: The internal device_opp and opp structures are RCU protected.
  * Hence this function internally uses RCU updater strategy with mutex locks
@@ -603,9 +606,27 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_disable);
  * Generate a cpufreq table for a provided device- this assumes that the
  * opp list is already initialized and ready for usage.
  *
- * This function allocates required memory for the cpufreq table. It is
- * expected that the caller does the required maintenance such as freeing
- * the table as required.
+ * Locking: This function must be called under rcu_read_lock(). dev_opp is a RCU
+ * protected pointer. The reason for the same is that the opp pointer which is
+ * returned will remain valid for use with opp_get_{voltage, freq} only while
+ * under the locked area. The pointer returned must be used prior to unlocking
+ * with rcu_read_unlock() to maintain the integrity of the pointer.
+ */
+struct srcu_notifier_head *dev_pm_opp_get_notifier(struct device *dev)
+{
+	struct device_opp *dev_opp = _find_device_opp(dev);
+
+	if (IS_ERR(dev_opp))
+		return ERR_CAST(dev_opp); /* matching type */
+
+	return &dev_opp->srcu_head;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_notifier);
+
+#ifdef CONFIG_OF
+/**
+ * of_remove_opp_table() - Free OPP table entries created from static DT entries
+ * @dev:	device pointer used to lookup device OPPs.
  *
  * Returns -EINVAL for bad pointers, -ENODEV if the device is not found, -ENOMEM
  * if no memory available for the operation (table is not populated), returns 0
@@ -619,8 +640,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_disable);
  * Callers should ensure that this function is *NOT* called under RCU protection
  * or in contexts where mutex locking cannot be used.
  */
-int dev_pm_opp_init_cpufreq_table(struct device *dev,
-			    struct cpufreq_frequency_table **table)
+void of_remove_opp_table(struct device *dev)
 {
 	struct device_opp *dev_opp;
 	struct opp *opp;
@@ -655,15 +675,23 @@ int dev_pm_opp_init_cpufreq_table(struct device *dev,
 		}
 	}
 	mutex_unlock(&dev_opp_list_lock);
+}
+EXPORT_SYMBOL_GPL(of_remove_opp_table);
+
+void of_cpumask_remove_opp_table(cpumask_var_t cpumask)
+{
+	struct device *cpu_dev;
+	int cpu;
 
 	freq_table[i].driver_data = i;
 	freq_table[i].frequency = CPUFREQ_TABLE_END;
 
 	*table = &freq_table[0];
 
-	return 0;
+		of_remove_opp_table(cpu_dev);
+	}
 }
-EXPORT_SYMBOL_GPL(dev_pm_opp_init_cpufreq_table);
+EXPORT_SYMBOL_GPL(of_cpumask_remove_opp_table);
 
 /**
  * dev_pm_opp_free_cpufreq_table() - free the cpufreq table
@@ -684,28 +712,42 @@ void dev_pm_opp_free_cpufreq_table(struct device *dev,
 EXPORT_SYMBOL_GPL(dev_pm_opp_free_cpufreq_table);
 #endif		/* CONFIG_CPU_FREQ */
 
-/**
- * dev_pm_opp_get_notifier() - find notifier_head of the device with opp
- * @dev:	device pointer used to lookup device OPPs.
- */
-struct srcu_notifier_head *dev_pm_opp_get_notifier(struct device *dev)
+/* Initializes OPP tables based on new bindings */
+static int _of_add_opp_table_v2(struct device *dev, struct device_node *opp_np)
 {
 	struct device_opp *dev_opp = find_device_opp(dev);
 
-	if (IS_ERR(dev_opp))
-		return ERR_CAST(dev_opp); /* matching type */
+		ret = _opp_add_static_v2(dev, np);
+		if (ret) {
+			dev_err(dev, "%s: Failed to add OPP, %d\n", __func__,
+				ret);
+			goto free_table;
+		}
+	}
+
+	/* There should be one of more OPP defined */
+	if (WARN_ON(!count))
+		return -ENOENT;
+
+	dev_opp = _find_device_opp(dev);
+	if (WARN_ON(IS_ERR(dev_opp))) {
+		ret = PTR_ERR(dev_opp);
+		goto free_table;
+	}
+
+	dev_opp->np = opp_np;
+	dev_opp->shared_opp = of_property_read_bool(opp_np, "opp-shared");
+
+	return 0;
+
+free_table:
+	of_remove_opp_table(dev);
 
 	return &dev_opp->head;
 }
 
-#ifdef CONFIG_OF
-/**
- * of_init_opp_table() - Initialize opp table from device tree
- * @dev:	device pointer used to lookup device OPPs.
- *
- * Register the initial OPP table with the OPP library for given device.
- */
-int of_init_opp_table(struct device *dev)
+/* Initializes OPP tables based on old-deprecated bindings */
+static int _of_add_opp_table_v1(struct device *dev)
 {
 	const struct property *prop;
 	const __be32 *val;
@@ -735,6 +777,121 @@ int of_init_opp_table(struct device *dev)
 		if (dev_pm_opp_add(dev, freq, volt)) {
 			dev_warn(dev, "%s: Failed to add OPP %ld\n",
 				 __func__, freq);
+		nr -= 2;
+	}
+
+	return 0;
+}
+
+/**
+ * of_add_opp_table() - Initialize opp table from device tree
+ * @dev:	device pointer used to lookup device OPPs.
+ *
+ * Register the initial OPP table with the OPP library for given device.
+ *
+ * Locking: The internal device_opp and opp structures are RCU protected.
+ * Hence this function indirectly uses RCU updater strategy with mutex locks
+ * to keep the integrity of the internal data structures. Callers should ensure
+ * that this function is *NOT* called under RCU protection or in contexts where
+ * mutex cannot be locked.
+ *
+ * Return:
+ * 0		On success OR
+ *		Duplicate OPPs (both freq and volt are same) and opp->available
+ * -EEXIST	Freq are same and volt are different OR
+ *		Duplicate OPPs (both freq and volt are same) and !opp->available
+ * -ENOMEM	Memory allocation failure
+ * -ENODEV	when 'operating-points' property is not found or is invalid data
+ *		in device node.
+ * -ENODATA	when empty 'operating-points' property is found
+ * -EINVAL	when invalid entries are found in opp-v2 table
+ */
+int of_add_opp_table(struct device *dev)
+{
+	struct device_node *opp_np;
+	int ret;
+
+	/*
+	 * OPPs have two version of bindings now. The older one is deprecated,
+	 * try for the new binding first.
+	 */
+	opp_np = _of_get_opp_desc_node(dev);
+	if (!opp_np) {
+		/*
+		 * Try old-deprecated bindings for backward compatibility with
+		 * older dtbs.
+		 */
+		return _of_add_opp_table_v1(dev);
+	}
+
+	ret = _of_add_opp_table_v2(dev, opp_np);
+	of_node_put(opp_np);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_add_opp_table);
+
+int of_cpumask_add_opp_table(cpumask_var_t cpumask)
+{
+	struct device *cpu_dev;
+	int cpu, ret = 0;
+
+	WARN_ON(cpumask_empty(cpumask));
+
+	for_each_cpu(cpu, cpumask) {
+		cpu_dev = get_cpu_device(cpu);
+		if (!cpu_dev) {
+			pr_err("%s: failed to get cpu%d device\n", __func__,
+			       cpu);
+			continue;
+		}
+
+		ret = of_add_opp_table(cpu_dev);
+		if (ret) {
+			pr_err("%s: couldn't find opp table for cpu:%d, %d\n",
+			       __func__, cpu, ret);
+
+			/* Free all other OPPs */
+			of_cpumask_remove_opp_table(cpumask);
+			break;
+		}
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(of_cpumask_add_opp_table);
+
+/* Required only for V1 bindings, as v2 can manage it from DT itself */
+int set_cpus_sharing_opps(struct device *cpu_dev, cpumask_var_t cpumask)
+{
+	struct device_list_opp *list_dev;
+	struct device_opp *dev_opp;
+	struct device *dev;
+	int cpu, ret = 0;
+
+	rcu_read_lock();
+
+	dev_opp = _find_device_opp(cpu_dev);
+	if (IS_ERR(dev_opp)) {
+		ret = -EINVAL;
+		goto out_rcu_read_unlock;
+	}
+
+	for_each_cpu(cpu, cpumask) {
+		if (cpu == cpu_dev->id)
+			continue;
+
+		dev = get_cpu_device(cpu);
+		if (!dev) {
+			dev_err(cpu_dev, "%s: failed to get cpu%d device\n",
+				__func__, cpu);
+			continue;
+		}
+
+		list_dev = _add_list_dev(dev, dev_opp);
+		if (!list_dev) {
+			dev_err(dev, "%s: failed to add list-dev for cpu%d device\n",
+				__func__, cpu);
 			continue;
 		}
 		nr -= 2;
