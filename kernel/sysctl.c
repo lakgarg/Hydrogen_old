@@ -436,6 +436,29 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= sched_hmp_proc_update_handler,
 	},
+#ifndef CONFIG_SCHED_QHMP
+	{
+		.procname	= "sched_lowspill_freq",
+		.data		= &sysctl_sched_lowspill_freq,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_pack_freq",
+		.data		= &sysctl_sched_pack_freq,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname       = "sched_new_task_windows",
+		.data           = &sysctl_sched_new_task_windows,
+		.maxlen         = sizeof(unsigned int),
+		.mode           = 0644,
+		.proc_handler   = sched_window_update_handler,
+	},
+#endif
 	{
 		.procname	= "sched_boost",
 		.data		= &sysctl_sched_boost,
