@@ -154,3 +154,42 @@ config CPU_FREQ_MSM
         default y
         help
           This enables the CPUFreq driver for Qualcomm CPUs.
+
+config ARM_TEGRA20_CPUFREQ
+	bool "Tegra20 CPUFreq support"
+	depends on ARCH_TEGRA
+	default y
+	help
+	  This adds the CPUFreq driver support for Tegra20 SOCs.
+
+config ARM_TEGRA124_CPUFREQ
+	tristate "Tegra124 CPUFreq support"
+	depends on ARCH_TEGRA && CPUFREQ_DT
+	default y
+	help
+	  This adds the CPUFreq driver support for Tegra124 SOCs.
+
+config ARM_PXA2xx_CPUFREQ
+	tristate "Intel PXA2xx CPUfreq driver"
+	depends on PXA27x || PXA25x
+	help
+	  This add the CPUFreq driver support for Intel PXA2xx SOCs.
+
+	  If in doubt, say N.
+
+config ACPI_CPPC_CPUFREQ
+	tristate "CPUFreq driver based on the ACPI CPPC spec"
+	depends on ACPI
+	select ACPI_CPPC_LIB
+	default n
+	help
+	  This adds a CPUFreq driver which uses CPPC methods
+	  as described in the ACPIv5.1 spec. CPPC stands for
+	  Collaborative Processor Performance Controls. It
+	  is based on an abstract continuous scale of CPU
+	  performance values which allows the remote power
+	  processor to flexibly optimize for power and
+	  performance. CPPC relies on power management firmware
+	  support for its operation.
+
+	  If in doubt, say N.
