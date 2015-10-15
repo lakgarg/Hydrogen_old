@@ -590,9 +590,109 @@ static int _opp_add_v1(struct device *dev, unsigned long freq, long u_volt,
 	/* allocate new OPP node */
 	new_opp = kzalloc(sizeof(struct opp), GFP_KERNEL);
 	if (!new_opp) {
-		dev_warn(dev, "%s: Unable to create new OPP node\n", __func__);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto unlock;
 	}
+
+	/* populate the opp table */
+	new_opp->rate = freq;
+	new_opp->u_volt = u_volt;
+	new_opp->available = true;
+	new_opp->dynamic = dynamic;
+
+	ret = _opp_add(dev, new_opp, dev_opp);
+	if (ret)
+		goto free_opp;
+
+	mutex_unlock(&dev_opp_list_lock);
+
+	/*
+	 * Notify the changes in the availability of the operable
+	 * frequency/voltage list.
+	 */
+	srcu_notifier_call_chain(&dev_opp->srcu_head, OPP_EVENT_ADD, new_opp);
+	return 0;
+
+free_opp:
+	_opp_remove(dev_opp, new_opp, false);
+unlock:
+	mutex_unlock(&dev_opp_list_lock);
+	return ret;
+}
+
+/* TODO: Support multiple regulators */
+static int opp_parse_supplies(struct dev_pm_opp *opp, struct device *dev)
+{
+	u32 microvolt[3] = {0};
+	u32 val;
+	int count, ret;
+
+	/* Missing property isn't a problem, but an invalid entry is */
+	if (!of_find_property(opp->np, "opp-microvolt", NULL))
+		return 0;
+
+	count = of_property_count_u32_elems(opp->np, "opp-microvolt");
+	if (count < 0) {
+		dev_err(dev, "%s: Invalid opp-microvolt property (%d)\n",
+			__func__, count);
+		return count;
+	}
+
+	/* There can be one or three elements here */
+	if (count != 1 && count != 3) {
+		dev_err(dev, "%s: Invalid number of elements in opp-microvolt property (%d)\n",
+			__func__, count);
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32_array(opp->np, "opp-microvolt", microvolt,
+					 count);
+	if (ret) {
+		dev_err(dev, "%s: error parsing opp-microvolt: %d\n", __func__,
+			ret);
+		return -EINVAL;
+	}
+
+	opp->u_volt = microvolt[0];
+	opp->u_volt_min = microvolt[1];
+	opp->u_volt_max = microvolt[2];
+
+	if (!of_property_read_u32(opp->np, "opp-microamp", &val))
+		opp->u_amp = val;
+
+	return 0;
+}
+
+/**
+ * _opp_add_static_v2() - Allocate static OPPs (As per 'v2' DT bindings)
+ * @dev:	device for which we do this operation
+ * @np:		device node
+ *
+ * This function adds an opp definition to the opp list and returns status. The
+ * opp can be controlled using dev_pm_opp_enable/disable functions and may be
+ * removed by dev_pm_opp_remove.
+ *
+ * Locking: The internal device_opp and opp structures are RCU protected.
+ * Hence this function internally uses RCU updater strategy with mutex locks
+ * to keep the integrity of the internal data structures. Callers should ensure
+ * that this function is *NOT* called under RCU protection or in contexts where
+ * mutex cannot be locked.
+ *
+ * Return:
+ * 0		On success OR
+ *		Duplicate OPPs (both freq and volt are same) and opp->available
+ * -EEXIST	Freq are same and volt are different OR
+ *		Duplicate OPPs (both freq and volt are same) and !opp->available
+ * -ENOMEM	Memory allocation failure
+ * -EINVAL	Failed parsing the OPP node
+ */
+static int _opp_add_static_v2(struct device *dev, struct device_node *np)
+{
+	struct device_opp *dev_opp;
+	struct dev_pm_opp *new_opp;
+	u64 rate;
+	u32 val;
+	int ret;
 
 	/* Hold our list modification lock here */
 	mutex_lock(&dev_opp_list_lock);
@@ -629,11 +729,23 @@ static int _opp_add_v1(struct device *dev, unsigned long freq, long u_volt,
 	new_opp->u_volt = u_volt;
 	new_opp->available = true;
 
-	/* Insert new OPP in order of increasing frequency */
-	head = &dev_opp->opp_list;
-	list_for_each_entry_rcu(opp, &dev_opp->opp_list, node) {
-		if (new_opp->rate < opp->rate)
-			break;
+	if (!of_property_read_u32(np, "clock-latency-ns", &val))
+		new_opp->clock_latency_ns = val;
+
+	ret = opp_parse_supplies(new_opp, dev);
+	if (ret)
+		goto free_opp;
+
+	ret = _opp_add(dev, new_opp, dev_opp);
+	if (ret)
+		goto free_opp;
+
+	/* OPP to select on device suspend */
+	if (of_property_read_bool(np, "opp-suspend")) {
+		if (dev_opp->suspend_opp)
+			dev_warn(dev, "%s: Multiple suspend OPPs found (%lu %lu)\n",
+				 __func__, dev_opp->suspend_opp->rate,
+				 new_opp->rate);
 		else
 			head = &opp->node;
 	}
