@@ -31,7 +31,7 @@
  */
 static LIST_HEAD(dev_opp_list);
 /* Lock to allow exclusive modification to the device and opp lists */
-static DEFINE_MUTEX(dev_opp_list_lock);
+DEFINE_MUTEX(dev_opp_list_lock);
 
 /**
  * find_device_opp() - find device_opp struct using device pointer
