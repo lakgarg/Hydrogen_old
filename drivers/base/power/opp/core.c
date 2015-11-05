@@ -1010,10 +1010,56 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_free_cpufreq_table);
  */
 struct srcu_notifier_head *dev_pm_opp_get_notifier(struct device *dev)
 {
-	struct device_opp *dev_opp = find_device_opp(dev);
+	struct device_node *np;
+	struct device_opp *dev_opp;
+	int ret = 0, count = 0;
 
-	if (IS_ERR(dev_opp))
-		return ERR_CAST(dev_opp); /* matching type */
+	mutex_lock(&dev_opp_list_lock);
+
+	dev_opp = _managed_opp(opp_np);
+	if (dev_opp) {
+		/* OPPs are already managed */
+		if (!_add_list_dev(dev, dev_opp))
+			ret = -ENOMEM;
+		mutex_unlock(&dev_opp_list_lock);
+		return ret;
+	}
+	mutex_unlock(&dev_opp_list_lock);
+
+	/* We have opp-list node now, iterate over it and add OPPs */
+	for_each_available_child_of_node(opp_np, np) {
+		count++;
+
+		ret = _opp_add_static_v2(dev, np);
+		if (ret) {
+			dev_err(dev, "%s: Failed to add OPP, %d\n", __func__,
+				ret);
+			goto free_table;
+		}
+	}
+
+	/* There should be one of more OPP defined */
+	if (WARN_ON(!count))
+		return -ENOENT;
+
+	mutex_lock(&dev_opp_list_lock);
+
+	dev_opp = _find_device_opp(dev);
+	if (WARN_ON(IS_ERR(dev_opp))) {
+		ret = PTR_ERR(dev_opp);
+		mutex_unlock(&dev_opp_list_lock);
+		goto free_table;
+	}
+
+	dev_opp->np = opp_np;
+	dev_opp->shared_opp = of_property_read_bool(opp_np, "opp-shared");
+
+	mutex_unlock(&dev_opp_list_lock);
+
+	return 0;
+
+free_table:
+	dev_pm_opp_of_remove_table(dev);
 
 	return &dev_opp->head;
 }
