@@ -21,15 +21,9 @@
 #include <linux/rculist.h>
 #include <linux/rcupdate.h>
 
-<<<<<<< HEAD
-struct clk;
-struct regulator;
-
 /* Lock to allow exclusive modification to the device and opp lists */
 extern struct mutex dev_opp_list_lock;
 
-=======
->>>>>>> 3f306736fdde... PM / OPP: Move cpu specific code to opp/cpu.c
 /*
  * Internal data structure organization with the OPP layer library is as
  * follows:

@@ -34,6 +34,46 @@ static LIST_HEAD(dev_opp_list);
 /* Lock to allow exclusive modification to the device and opp lists */
 DEFINE_MUTEX(dev_opp_list_lock);
 
+#define opp_rcu_lockdep_assert()					\
+do {									\
+	rcu_lockdep_assert(rcu_read_lock_held() ||			\
+				lockdep_is_held(&dev_opp_list_lock),	\
+			   "Missing rcu_read_lock() or "		\
+			   "dev_opp_list_lock protection");		\
+} while (0)
+
+static struct device_list_opp *_find_list_dev(const struct device *dev,
+					      struct device_opp *dev_opp)
+{
+	struct device_list_opp *list_dev;
+
+	list_for_each_entry(list_dev, &dev_opp->dev_list, node)
+		if (list_dev->dev == dev)
+			return list_dev;
+
+	return NULL;
+}
+
+static struct device_opp *_managed_opp(const struct device_node *np)
+{
+	struct device_opp *dev_opp;
+
+	list_for_each_entry_rcu(dev_opp, &dev_opp_list, node) {
+		if (dev_opp->np == np) {
+			/*
+			 * Multiple devices can point to the same OPP table and
+			 * so will have same node-pointer, np.
+			 *
+			 * But the OPPs will be considered as shared only if the
+			 * OPP table contains a "opp-shared" property.
+			 */
+			return dev_opp->shared_opp ? dev_opp : NULL;
+		}
+	}
+
+	return NULL;
+}
+
 /**
  * find_device_opp() - find device_opp struct using device pointer
  * @dev:	device pointer used to lookup device OPPs
