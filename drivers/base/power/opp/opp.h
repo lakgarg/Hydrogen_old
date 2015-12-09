@@ -135,6 +135,9 @@ struct device_opp {
 	unsigned long clock_latency_ns_max;
 	bool shared_opp;
 	struct dev_pm_opp *suspend_opp;
+
+	unsigned int *supported_hw;
+	unsigned int supported_hw_count;
 };
 
 /* Routines internal to opp core */
