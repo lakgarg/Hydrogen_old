@@ -825,16 +825,6 @@ static void _remove_device_opp(struct device_opp *dev_opp)
 	if (dev_opp->supported_hw)
 		return;
 
-	if (dev_opp->prop_name)
-		return;
-
-	if (!IS_ERR(dev_opp->regulator))
-		return;
-
-	/* Release clk */
-	if (!IS_ERR(dev_opp->clk))
-		clk_put(dev_opp->clk);
-
 	list_dev = list_first_entry(&dev_opp->dev_list, struct device_list_opp,
 				    node);
 
@@ -1208,7 +1198,7 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_set_supported_hw);
 
 /**
  * dev_pm_opp_put_supported_hw() - Releases resources blocked for supported hw
- * @dev: Device for which supported-hw has to be put.
+ * @dev: Device for which supported-hw has to be set.
  *
  * This is required only for the V2 bindings, and is called for a matching
  * dev_pm_opp_set_supported_hw(). Until this is called, the device_opp structure
@@ -1254,219 +1244,6 @@ unlock:
 	mutex_unlock(&dev_opp_list_lock);
 }
 EXPORT_SYMBOL_GPL(dev_pm_opp_put_supported_hw);
-
-/**
- * dev_pm_opp_set_prop_name() - Set prop-extn name
- * @dev: Device for which the prop-name has to be set.
- * @name: name to postfix to properties.
- *
- * This is required only for the V2 bindings, and it enables a platform to
- * specify the extn to be used for certain property names. The properties to
- * which the extension will apply are opp-microvolt and opp-microamp. OPP core
- * should postfix the property name with -<name> while looking for them.
- *
- * Locking: The internal device_opp and opp structures are RCU protected.
- * Hence this function internally uses RCU updater strategy with mutex locks
- * to keep the integrity of the internal data structures. Callers should ensure
- * that this function is *NOT* called under RCU protection or in contexts where
- * mutex cannot be locked.
- */
-int dev_pm_opp_set_prop_name(struct device *dev, const char *name)
-{
-	struct device_opp *dev_opp;
-	int ret = 0;
-
-	/* Hold our list modification lock here */
-	mutex_lock(&dev_opp_list_lock);
-
-	dev_opp = _add_device_opp(dev);
-	if (!dev_opp) {
-		ret = -ENOMEM;
-		goto unlock;
-	}
-
-	/* Make sure there are no concurrent readers while updating dev_opp */
-	WARN_ON(!list_empty(&dev_opp->opp_list));
-
-	/* Do we already have a prop-name associated with dev_opp? */
-	if (dev_opp->prop_name) {
-		dev_err(dev, "%s: Already have prop-name %s\n", __func__,
-			dev_opp->prop_name);
-		ret = -EBUSY;
-		goto err;
-	}
-
-	dev_opp->prop_name = kstrdup(name, GFP_KERNEL);
-	if (!dev_opp->prop_name) {
-		ret = -ENOMEM;
-		goto err;
-	}
-
-	mutex_unlock(&dev_opp_list_lock);
-	return 0;
-
-err:
-	_remove_device_opp(dev_opp);
-unlock:
-	mutex_unlock(&dev_opp_list_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_set_prop_name);
-
-/**
- * dev_pm_opp_put_prop_name() - Releases resources blocked for prop-name
- * @dev: Device for which the prop-name has to be put.
- *
- * This is required only for the V2 bindings, and is called for a matching
- * dev_pm_opp_set_prop_name(). Until this is called, the device_opp structure
- * will not be freed.
- *
- * Locking: The internal device_opp and opp structures are RCU protected.
- * Hence this function internally uses RCU updater strategy with mutex locks
- * to keep the integrity of the internal data structures. Callers should ensure
- * that this function is *NOT* called under RCU protection or in contexts where
- * mutex cannot be locked.
- */
-void dev_pm_opp_put_prop_name(struct device *dev)
-{
-	struct device_opp *dev_opp;
-
-	/* Hold our list modification lock here */
-	mutex_lock(&dev_opp_list_lock);
-
-	/* Check for existing list for 'dev' first */
-	dev_opp = _find_device_opp(dev);
-	if (IS_ERR(dev_opp)) {
-		dev_err(dev, "Failed to find dev_opp: %ld\n", PTR_ERR(dev_opp));
-		goto unlock;
-	}
-
-	/* Make sure there are no concurrent readers while updating dev_opp */
-	WARN_ON(!list_empty(&dev_opp->opp_list));
-
-	if (!dev_opp->prop_name) {
-		dev_err(dev, "%s: Doesn't have a prop-name\n", __func__);
-		goto unlock;
-	}
-
-	kfree(dev_opp->prop_name);
-	dev_opp->prop_name = NULL;
-
-	/* Try freeing device_opp if this was the last blocking resource */
-	_remove_device_opp(dev_opp);
-
-unlock:
-	mutex_unlock(&dev_opp_list_lock);
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_put_prop_name);
-
-/**
- * dev_pm_opp_set_regulator() - Set regulator name for the device
- * @dev: Device for which regulator name is being set.
- * @name: Name of the regulator.
- *
- * In order to support OPP switching, OPP layer needs to know the name of the
- * device's regulator, as the core would be required to switch voltages as well.
- *
- * This must be called before any OPPs are initialized for the device.
- *
- * Locking: The internal device_opp and opp structures are RCU protected.
- * Hence this function internally uses RCU updater strategy with mutex locks
- * to keep the integrity of the internal data structures. Callers should ensure
- * that this function is *NOT* called under RCU protection or in contexts where
- * mutex cannot be locked.
- */
-int dev_pm_opp_set_regulator(struct device *dev, const char *name)
-{
-	struct device_opp *dev_opp;
-	struct regulator *reg;
-	int ret;
-
-	mutex_lock(&dev_opp_list_lock);
-
-	dev_opp = _add_device_opp(dev);
-	if (!dev_opp) {
-		ret = -ENOMEM;
-		goto unlock;
-	}
-
-	/* This should be called before OPPs are initialized */
-	if (WARN_ON(!list_empty(&dev_opp->opp_list))) {
-		ret = -EBUSY;
-		goto err;
-	}
-
-	/* Already have a regulator set */
-	if (WARN_ON(!IS_ERR(dev_opp->regulator))) {
-		ret = -EBUSY;
-		goto err;
-	}
-	/* Allocate the regulator */
-	reg = regulator_get_optional(dev, name);
-	if (IS_ERR(reg)) {
-		ret = PTR_ERR(reg);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "%s: no regulator (%s) found: %d\n",
-				__func__, name, ret);
-		goto err;
-	}
-
-	dev_opp->regulator = reg;
-
-	mutex_unlock(&dev_opp_list_lock);
-	return 0;
-
-err:
-	_remove_device_opp(dev_opp);
-unlock:
-	mutex_unlock(&dev_opp_list_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_set_regulator);
-
-/**
- * dev_pm_opp_put_regulator() - Releases resources blocked for regulator
- * @dev: Device for which regulator was set.
- *
- * Locking: The internal device_opp and opp structures are RCU protected.
- * Hence this function internally uses RCU updater strategy with mutex locks
- * to keep the integrity of the internal data structures. Callers should ensure
- * that this function is *NOT* called under RCU protection or in contexts where
- * mutex cannot be locked.
- */
-void dev_pm_opp_put_regulator(struct device *dev)
-{
-	struct device_opp *dev_opp;
-
-	mutex_lock(&dev_opp_list_lock);
-
-	/* Check for existing list for 'dev' first */
-	dev_opp = _find_device_opp(dev);
-	if (IS_ERR(dev_opp)) {
-		dev_err(dev, "Failed to find dev_opp: %ld\n", PTR_ERR(dev_opp));
-		goto unlock;
-	}
-
-	if (IS_ERR(dev_opp->regulator)) {
-		dev_err(dev, "%s: Doesn't have regulator set\n", __func__);
-		goto unlock;
-	}
-
-	/* Make sure there are no concurrent readers while updating dev_opp */
-	WARN_ON(!list_empty(&dev_opp->opp_list));
-
-	regulator_put(dev_opp->regulator);
-	dev_opp->regulator = ERR_PTR(-ENXIO);
-
-	/* Try freeing device_opp if this was the last blocking resource */
-	_remove_device_opp(dev_opp);
-
-unlock:
-	mutex_unlock(&dev_opp_list_lock);
-}
-EXPORT_SYMBOL_GPL(dev_pm_opp_put_regulator);
 
 static bool _opp_is_supported(struct device *dev, struct device_opp *dev_opp,
 			      struct device_node *np)
@@ -1550,6 +1327,12 @@ static int _opp_add_static_v2(struct device *dev, struct device_node *np)
 		dev_opp->dev = dev;
 		srcu_init_notifier_head(&dev_opp->head);
 		INIT_LIST_HEAD(&dev_opp->opp_list);
+
+	/* Check if the OPP supports hardware's hierarchy of versions or not */
+	if (!_opp_is_supported(dev, dev_opp, np)) {
+		dev_dbg(dev, "OPP not supported by hardware: %llu\n", rate);
+		goto free_opp;
+	}
 
 	/* Check if the OPP supports hardware's hierarchy of versions or not */
 	if (!_opp_is_supported(dev, dev_opp, np)) {
