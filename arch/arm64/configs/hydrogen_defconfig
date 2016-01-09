@@ -698,4 +698,4 @@ CONFIG_VOLTAGE_CONTROL=y
 #
 # Vibrator control
 #
-CONFIG_QPNP_VIBRATOR=y
+# CONFIG_QPNP_VIBRATOR is not set
