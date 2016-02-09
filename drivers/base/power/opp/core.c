@@ -133,6 +133,153 @@ unsigned long dev_pm_opp_get_freq(struct opp *opp)
 EXPORT_SYMBOL_GPL(dev_pm_opp_get_freq);
 
 /**
+ * dev_pm_opp_is_turbo() - Returns if opp is turbo OPP or not
+ * @opp: opp for which turbo mode is being verified
+ *
+ * Turbo OPPs are not for normal use, and can be enabled (under certain
+ * conditions) for short duration of times to finish high throughput work
+ * quickly. Running on them for longer times may overheat the chip.
+ *
+ * Return: true if opp is turbo opp, else false.
+ *
+ * Locking: This function must be called under rcu_read_lock(). opp is a rcu
+ * protected pointer. This means that opp which could have been fetched by
+ * opp_find_freq_{exact,ceil,floor} functions is valid as long as we are
+ * under RCU lock. The pointer returned by the opp_find_freq family must be
+ * used in the same section as the usage of this function with the pointer
+ * prior to unlocking with rcu_read_unlock() to maintain the integrity of the
+ * pointer.
+ */
+bool dev_pm_opp_is_turbo(struct dev_pm_opp *opp)
+{
+	struct dev_pm_opp *tmp_opp;
+
+	opp_rcu_lockdep_assert();
+
+	tmp_opp = rcu_dereference(opp);
+	if (IS_ERR_OR_NULL(tmp_opp) || !tmp_opp->available) {
+		pr_err("%s: Invalid parameters\n", __func__);
+		return false;
+	}
+
+	return tmp_opp->turbo;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_is_turbo);
+
+/**
+ * dev_pm_opp_get_max_clock_latency() - Get max clock latency in nanoseconds
+ * @dev:	device for which we do this operation
+ *
+ * Return: This function returns the max clock latency in nanoseconds.
+ *
+ * Locking: This function takes rcu_read_lock().
+ */
+unsigned long dev_pm_opp_get_max_clock_latency(struct device *dev)
+{
+	struct device_opp *dev_opp;
+	unsigned long clock_latency_ns;
+
+	rcu_read_lock();
+
+	dev_opp = _find_device_opp(dev);
+	if (IS_ERR(dev_opp))
+		clock_latency_ns = 0;
+	else
+		clock_latency_ns = dev_opp->clock_latency_ns_max;
+
+	rcu_read_unlock();
+	return clock_latency_ns;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_max_clock_latency);
+
+/**
+ * dev_pm_opp_get_max_volt_latency() - Get max voltage latency in nanoseconds
+ * @dev: device for which we do this operation
+ *
+ * Return: This function returns the max voltage latency in nanoseconds.
+ *
+ * Locking: This function takes rcu_read_lock().
+ */
+unsigned long dev_pm_opp_get_max_volt_latency(struct device *dev)
+{
+	struct device_opp *dev_opp;
+	struct dev_pm_opp *opp;
+	struct regulator *reg;
+	unsigned long latency_ns = 0;
+	unsigned long min_uV = ~0, max_uV = 0;
+	int ret;
+
+	rcu_read_lock();
+
+	dev_opp = _find_device_opp(dev);
+	if (IS_ERR(dev_opp)) {
+		rcu_read_unlock();
+		return 0;
+	}
+
+	reg = dev_opp->regulator;
+	if (IS_ERR_OR_NULL(reg)) {
+		/* Regulator may not be required for device */
+		if (reg)
+			dev_err(dev, "%s: Invalid regulator (%ld)\n", __func__,
+				PTR_ERR(reg));
+		rcu_read_unlock();
+		return 0;
+	}
+
+	list_for_each_entry_rcu(opp, &dev_opp->opp_list, node) {
+		if (!opp->available)
+			continue;
+
+		if (opp->u_volt_min < min_uV)
+			min_uV = opp->u_volt_min;
+		if (opp->u_volt_max > max_uV)
+			max_uV = opp->u_volt_max;
+	}
+
+	rcu_read_unlock();
+
+	/*
+	 * The caller needs to ensure that dev_opp (and hence the regulator)
+	 * isn't freed, while we are executing this routine.
+	 */
+	ret = regulator_set_voltage_time(reg, min_uV, max_uV);
+	if (ret > 0)
+		latency_ns = ret * 1000;
+
+	return latency_ns;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_max_volt_latency);
+
+/**
+ * dev_pm_opp_get_suspend_opp() - Get suspend opp
+ * @dev:	device for which we do this operation
+ *
+ * Return: This function returns pointer to the suspend opp if it is
+ * defined and available, otherwise it returns NULL.
+ *
+ * Locking: This function must be called under rcu_read_lock(). opp is a rcu
+ * protected pointer. The reason for the same is that the opp pointer which is
+ * returned will remain valid for use with opp_get_{voltage, freq} only while
+ * under the locked area. The pointer returned must be used prior to unlocking
+ * with rcu_read_unlock() to maintain the integrity of the pointer.
+ */
+struct dev_pm_opp *dev_pm_opp_get_suspend_opp(struct device *dev)
+{
+	struct device_opp *dev_opp;
+
+	opp_rcu_lockdep_assert();
+
+	dev_opp = _find_device_opp(dev);
+	if (IS_ERR(dev_opp) || !dev_opp->suspend_opp ||
+	    !dev_opp->suspend_opp->available)
+		return NULL;
+
+	return dev_opp->suspend_opp;
+}
+EXPORT_SYMBOL_GPL(dev_pm_opp_get_suspend_opp);
+
+/**
  * dev_pm_opp_get_opp_count() - Get number of opps available in the opp list
  * @dev:	device for which we do this operation
  *
