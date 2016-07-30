@@ -16,68 +16,48 @@
 /* ----------------------------------------------------------------------------------------------
    SysFs interface : /sys/module/msm_hotplug
    ----------------------------------------------------------------------------------------------
-
     msm_enabled          : enable/disable hotplugging
                            (rw, 0/1, defaults to 0)
-
     update_rate          : delay between load calculations in ms
                            (rw, 2-5000, defaults to 200)
-
     load_levels          : show/update load levels for little cores
                            (rw, format "x y z"
                               x = 1-4   = core
                               y = 0- (100*x)    = up_threshold
                               z = 0-((100*x)-1) = down_threshold)
-
     min_cpus_online      : minimum LITTLE cores to keep up at all times
                            (rw, 1-4, defaults to 3 for s808)
-
     max_cpus_online      : maximum LITTLE cores allowed up at all times when screen on
                            (rw, 1-4, defaults to 4 for s808)
-
     max_cpus_online_susp : maximum LITTLE cores allowed up at all times when screen off
                            (rw, 1-4, defaults to 1 for s808)
-
     offline_load         : minimal load to elect a LITTLE core for downing
                            (rw, 0-100, defaults to 0, disabled when 0)
-
     min_cpus_online_big  : minimum big cores to keep up at all times
                            (rw, 0-4, defaults to 0 for s810)
-
     max_cpus_online_big  : maximum big cores allowed up at all times when screen on
                            (rw, 1-4, defaults to 4 for s810)
-
     offline_load_big     : average load of all big cores to reach to remove a big core
                            (rw, 0-100, defaults to 20)
-
     online_load_big      : average load of all big cores to reach to add an additional big core
                            (rw, 0-100, defaults to 80)
-
     kick_in_load_big     : average load of all little cores to reach to add first big core
                            (rw, 0-100, defaults to 70)
-
     fast_lane_load       : average load of all running little cores to reach to bring up all
                            big and LITTLE cores
                            (rw, 0/70-100, defaults to 95, disabled when 0)
-
     big_core_up_delay    : delay before brining up big cores in ms
                            (rw, defaults to 0, disabled when 0)
-
     io_is_busy           : consider io as load
                            (rw, 0/1, defaults to 0)
-
     current_load         : show current load (sum of all up cores' load)
                            (ro)
-
     current_cores        : show current core up count
                            (ro, format "big.LITTLE")
-
     debug                : print debugging info to dmesg
                            (rw, 0/1, defaults to 0)
-
     version              : show current msm_hotplug version
                            (ro)
-
    ---------------------------------------------------------------------------------------------- */
 
 #include <linux/module.h>
