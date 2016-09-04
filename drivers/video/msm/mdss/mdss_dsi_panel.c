@@ -722,15 +722,13 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 	if (ctrl->off_cmds.cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, &ctrl->off_cmds);
 
-<<<<<<< HEAD
-=======
+
 	display_on = false;
 
 #ifdef CONFIG_POWERSUSPEND
 	set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
 #endif
 
->>>>>>> dd34fecbff5... kernel/power/powersuspend: new PM kernel driver for Android w/o early_suspend v1.5 (faux123/Yank555.lu)
 end:
 	pinfo->blank_state = MDSS_PANEL_BLANK_BLANK;
 	pr_debug("%s:-\n", __func__);
