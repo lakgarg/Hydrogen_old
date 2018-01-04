@@ -1096,6 +1096,48 @@ static struct regulator_ops cpr_corner_ops = {
 	.get_voltage		= cpr_regulator_get_voltage,
 };
 
+#ifdef CONFIG_VOLTAGE_CONTROL
+#define HFPLL_MIN_VDD		 640000
+#define HFPLL_MAX_VDD		1250000
+
+int* cpr_regulator_get_corner_voltage(struct regulator *regulator,
+		int corner)
+{
+	struct cpr_regulator *cpr_vreg = regulator_get_drvdata(regulator);
+	int *volt;
+
+	volt = kzalloc(2 * sizeof(int), GFP_KERNEL);
+
+	if (corner >= CPR_CORNER_MIN && corner <= cpr_vreg->num_corners) {
+		volt[0] = cpr_vreg->ceiling_volt[corner];
+		volt[1] = cpr_vreg->floor_volt[corner];
+	}
+
+	return volt;
+}
+
+int cpr_regulator_set_corner_voltage(struct regulator *regulator,
+		int corner, int *volt)
+{
+	struct cpr_regulator *cpr_vreg = regulator_get_drvdata(regulator);
+	int i;
+
+	/* Make sure voltages are in range */
+	for(i = 0; i < 2; i ++)
+		volt[i] = min(max(volt[i], HFPLL_MIN_VDD), HFPLL_MAX_VDD);
+
+	if (corner >= CPR_CORNER_MIN && corner <= cpr_vreg->num_corners) {
+		mutex_lock(&cpr_vreg->cpr_mutex);
+		cpr_vreg->ceiling_volt[corner] = volt[0];
+		cpr_vreg->floor_volt[corner] = volt[1];
+		mutex_unlock(&cpr_vreg->cpr_mutex);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+#endif
+
 #ifdef CONFIG_PM
 static int cpr_suspend(struct cpr_regulator *cpr_vreg)
 {
