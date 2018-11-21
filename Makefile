@@ -375,6 +375,11 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
 		   -std=gnu89
+		   -Wno-error=maybe-uninitialized -Wno-bool-compare -Wno-misleading-indentation \
+	       -Wno-format -Wno-logical-not-parentheses -Wno-int-in-bool-context -Wno-memset-elt-size \
+           -Wno-parentheses -Wno-bool-operation -Wno-duplicate-decl-specifier -Wno-stringop-overflow \
+           -Wno-format-truncation -Wno-format-overflow -fno-modulo-sched -Wno-error=switch-unreachable \
+		   -Wno-switch-unreachable -Wno-error=packed-not-aligned -Wno-packed-not-aligned
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -571,6 +576,9 @@ endif # $(dot-config)
 # This allow a user to issue only 'make' to build a kernel including modules
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
+
+# Needed to unbreak GCC 7.x and above
+KBUILD_CFLAGS   += $(call cc-option,-fno-store-merging,)
 
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
