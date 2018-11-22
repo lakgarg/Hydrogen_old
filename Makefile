@@ -238,11 +238,71 @@ export KCONFIG_CONFIG
 CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 	  else if [ -x /bin/bash ]; then echo /bin/bash; \
 	  else echo sh; fi ; fi)
+# Specific GCC Optimizations	  
+EXTRA_OPTS := \
+	-falign-loops=1 -falign-functions=1 -falign-labels=1 -falign-jumps=1 \
+	-fira-hoist-pressure -fira-loop-pressure -fno-inline-small-functions \
+	-fsched-pressure -fsched-spec-load -ftree-vectorize \
+	-fno-guess-branch-probability -fpredictive-commoning \
+	-fvect-cost-model=cheap -fsimd-cost-model=cheap \
+	-ftree-partial-pre -fno-gcse
+# Arm64 Architecture Specific GCC Flags
+# fall back to -march=armv8-a in case the compiler isn't compatible
+# with -mcpu and -mtune
+ARM_ARCH_OPT := \
+	$(call cc-option,-march=armv8-a+crc+crypto+fp+simd,) \
+	-mtune=cortex-a57 -mcpu=cortex-a57+crc+crypto+fp+simd \
+	--param l1-cache-line-size=64 --param l1-cache-size=32 --param l2-cache-size=512 
 
-HOSTCC       = gcc
-HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
-HOSTCXXFLAGS = -O2
+# Optional Flags
+GEN_OPT_FLAGS := \
+ -DNDEBUG -g0 -pipe \
+-fomit-frame-pointer
+
+LLVM_FLAGS := \
+ -mllvm -polly -mllvm -polly-optimized-scops -mllvm -polly-process-unprofitable \
+ -mllvm -polly-vectorizer=stripmine -mllvm -polly-tiling=false
+
+#Targetting Options
+LTO_TRIPLE = $(HDK_TC)lto-	
+LLVM_TRIPLE = $(HDK_TC)llvm-
+CLANG_TRIPLE = $(HDK_TC)clang $(CLANG_ARCH_OPT) $(LLVM_FLAGS) -flto --sysroot=$(HDK) --gcc-toolchain=$(CROSS_COMPILE)gcc
+CPP_TRIPLE = $(HDK_TC)clang++ $(CLANG_ARCH_OPT) $(LLVM_FLAGS) -Ofast -flto --sysroot=$(HDK) --gcc-toolchain=$(CROSS_COMPILE)gcc
+
+FLAGS_OPTIMIZE := -falign-functions=32 -fgcse-las -fivopts \
+	-fgcse-sm \
+	-fipa-pta \
+	-fomit-frame-pointer \
+	-frename-registers \
+	-ftracer \
+	-ftree-loop-im \
+	-ftree-loop-ivcanon \
+	-funsafe-loop-optimizations \
+	-funswitch-loops \
+	-fweb \
+	-Wno-error=array-bounds \
+	-Wno-error=clobbered \
+	-Wno-error=maybe-uninitialized \
+	-Wno-error=strict-overflow \
+	-fgcse-after-reload \
+	-floop-block \
+	-floop-interchange \
+	-floop-nest-optimize \
+	-floop-parallelize-all \
+	-floop-strip-mine \
+	-fmodulo-sched \
+	-fmodulo-sched-allow-regmoves \
+	-frerun-cse-after-loop \
+	-funroll-loops \
+	-ftree-vectorize \
+	-frename-registers \
+	$(GRAPHITE)
+GRAPHITE = -fgraphite -fgraphite-identity -floop-interchange -ftree-loop-distribution -floop-strip-mine -floop-block -ftree-loop-linear \
+$(FLAGS_OPTIMIZE)
+HOSTCC       = $(which ccache) gcc
+HOSTCXX      = $(which ccache) g++
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -Ofast -fno-inline-functions -fno-ipa-cp-clone -fomit-frame-pointer -std=gnu89 $(GRAPHITE) $(FLAGS_OPTIMIZE)
+HOSTCXXFLAGS = -Ofast -fno-inline-functions -fgcse-las -pipe -fno-ipa-cp-clone $(GRAPHITE) $(FLAGS_OPTIMIZE)
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -327,6 +387,12 @@ include $(srctree)/scripts/Kbuild.include
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
 CC		= $(CROSS_COMPILE)gcc
+LD		+= -Ofast --strip-debug
+CC		+= -Ofast $(FLAGS_OPTIMIZE) $(GRAPHITE)
+CC		+= -fmodulo-sched -fmodulo-sched-allow-regmoves
+CC		+= -fgraphite-identity -floop-block -floop-interchange -floop-strip-mine
+CC		+= -ftree-loop-linear -ftree-loop-distribution
+CC	+= -mlow-precision-recip-sqrt -mpc-relative-literal-loads
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
 NM		= $(CROSS_COMPILE)nm
@@ -342,13 +408,12 @@ CHECK		= sparse
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-CFLAGS_MODULE   =
-AFLAGS_MODULE   =
-LDFLAGS_MODULE  =
-CFLAGS_KERNEL	=
-AFLAGS_KERNEL	=
+CFLAGS_MODULE   = $(FLAGS_OPTIMIZE) $(GRAPHITE)
+AFLAGS_MODULE   = $(FLAGS_OPTIMIZE) $(GRAPHITE)
+LDFLAGS_MODULE  = --strip-debug
+CFLAGS_KERNEL	=  
+AFLAGS_KERNEL	= $(FLAGS_OPTIMIZE) $(GRAPHITE)
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
-
 
 # Use USERINCLUDE when you must reference the UAPI directories only.
 USERINCLUDE    := \
@@ -372,11 +437,25 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
                    -fmodulo-sched -fmodulo-sched-allow-regmoves \
                    -mcpu=cortex-a57.cortex-a53+crypto+crc -mtune=cortex-a57.cortex-a53 \
-		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks \
-		   -std=gnu89
+				   -fno-strict-aliasing -fno-common \
+				   -Werror-implicit-function-declaration \
+				   -Wno-format-security \
+		           -fno-delete-null-pointer-checks \
+		           -std=gnu89 -Wno-unused-const-variable -Wno-misleading-indentation \
+		           -no-pie -fno-pic \
+		           -Ofast -fno-inline-functions \
+		           -fgcse-sm -fsched-spec-load \
+		           -fsingle-precision-constant \
+                   -fno-delete-null-pointer-checks \
+                   -Wno-memset-transposed-args  -Wno-bool-compare -Wno-logical-not-parentheses \
+		           -Wno-switch-bool \
+		           -Wno-multistatement-macros \
+		           -Wno-bool-operation -Wno-nonnull -Wno-switch-unreachable -Wno-format-truncation -Wno-format-overflow -Wno-duplicate-decl-specifier -Wno-memset-elt-size -Wno-int-in-bool-context \
+		           -mstrict-align \
+		           -mfix-cortex-a53-843419 -mfix-cortex-a53-835769 \
+		           $(GEN_OPT_FLAGS) \
+		           $(GRAPHITE) \
+                   $(FLAGS_OPTIMIZE)
 
 
 # Thanks gcc!
@@ -393,16 +472,19 @@ KBUILD_CFLAGS   += -Wno-trigraphs -Wno-unused-label -Wno-array-bounds -Wno-memse
 
 KBUILD_CFLAGS += $(call cc-disable-warning,unused-function,)
 
-KBUILD_AFLAGS_KERNEL :=
-KBUILD_CFLAGS_KERNEL :=
+KBUILD_AFLAGS_KERNEL := $(GEN_OPT_FLAGS)
+KBUILD_CFLAGS_KERNEL := $(GEN_OPT_FLAGS)
 KBUILD_AFLAGS   := -D__ASSEMBLY__
-KBUILD_AFLAGS_MODULE  := -DMODULE
-KBUILD_CFLAGS_MODULE  := -DMODULE
+KBUILD_AFLAGS_MODULE  := -DMODULE $(GEN_OPT_FLAGS)
+KBUILD_CFLAGS_MODULE  := -DMODULE -fno-pic $(GEN_OPT_FLAGS)
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
+
+# arter97's optimizations
+KBUILD_CFLAGS	+= -pipe -fno-pic
 
 export VERSION PATCHLEVEL SUBLEVEL KERNELRELEASE KERNELVERSION
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC
