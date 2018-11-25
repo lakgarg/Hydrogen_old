@@ -544,7 +544,7 @@
 			compatible = "qcom,spm-regulator";
 			reg = <0x2900 0x100>;
 			regulator-name = "pm8994_s8";
-			regulator-min-microvolt = <700000>;
+			regulator-min-microvolt = <100000>;
 			regulator-max-microvolt = <1180000>;
 			qcom,cpu-num = <0>;
 		};
@@ -557,7 +557,7 @@
 			compatible = "qcom,spm-regulator";
 			reg = <0x3200 0x100>;
 			regulator-name = "pm8994_s11";
-			regulator-min-microvolt = <700000>;
+			regulator-min-microvolt = <100000>;
 			regulator-max-microvolt = <1225000>;
 			qcom,cpu-num = <4>;
 		};
@@ -609,7 +609,7 @@
 		regulator-max-microvolt = <13>;
 
 		qcom,cpr-voltage-ceiling = <900000 900000 1000000 1180000>;
-		qcom,cpr-voltage-floor =   <700000 700000  780000 835000>;
+		qcom,cpr-voltage-floor =   <100000 700000  780000 835000>;
 		vdd-apc-supply = <&pm8994_s8>;
 
 		qcom,vdd-mx-corner-map = <3 4 5 7>;
@@ -673,7 +673,7 @@
 					      1115000 1180000 1180000 1180000
 					      1180000>;
 		qcom,cpr-voltage-floor-override =
-				<0xFFFFFFFF 0 700000 700000 700000 725000
+				<0xFFFFFFFF 0 100000 700000 700000 725000
 					      780000 800000 825000 835000
 					      850000 915000 970000 980000
 					      1000000>;
@@ -733,7 +733,7 @@
 		regulator-max-microvolt = <17>;
 
 		qcom,cpr-voltage-ceiling = <900000 900000 1000000 1225000>;
-		qcom,cpr-voltage-floor =   <700000 700000  750000 835000>;
+		qcom,cpr-voltage-floor =   <100000 700000  750000 835000>;
 		vdd-apc-supply = <&pm8994_s11>;
 
 		qcom,vdd-mx-corner-map = <3 4 5 7>;
@@ -803,11 +803,11 @@
 				     1160000 1160000 1160000 1225000 1225000
 				     1225000 1225000>;
 		qcom,cpr-voltage-floor-override =
-				<0 0 700000 700000 700000 700000 725000
+				<0 0 100000 700000 700000 700000 725000
 				     750000 775000 795000 835000 860000
 				     880000 895000 915000 935000 945000
 				     950000 980000>,
-				<1 0 700000 700000 700000 700000 725000
+				<1 0 100000 700000 700000 700000 725000
 				     750000 775000 795000 835000 860000
 				     880000 895000 915000 935000 945000
 				     950000 980000>;

@@ -639,12 +639,10 @@ static ssize_t show_bios_limit(struct cpufreq_policy *policy, char *buf)
 #ifdef CONFIG_VOLTAGE_CONTROL
 extern ssize_t cpu_clock_get_vdd(char *buf);
 extern ssize_t cpu_clock_set_vdd(const char *buf, size_t count);
-
 static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
 {
 	return cpu_clock_get_vdd(buf);
 }
-
 static ssize_t store_UV_mV_table(struct cpufreq_policy *policy,
 	const char *buf, size_t count)
 {

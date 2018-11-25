@@ -1089,109 +1089,70 @@ static struct mux_clk cpu_debug_mux = {
 };
 
 #ifdef CONFIG_VOLTAGE_CONTROL
-extern int* cpr_regulator_get_corner_voltage(struct regulator *regulator,
+extern int cpr_regulator_get_corner_voltage(struct regulator *regulator,
 		int corner);
 extern int cpr_regulator_set_corner_voltage(struct regulator *regulator,
-		int corner, int *volt);
-
+		int corner, int volt);
 ssize_t cpu_clock_get_vdd(char *buf)
 {
 	ssize_t count = 0;
-	int i, *uv;
-
+	int i, uv;
 	if (!buf)
 		return 0;
-
 	for (i = 1; i < a53_clk.c.num_fmax; i++) {
 		uv = cpr_regulator_get_corner_voltage(
 					a53_clk.c.vdd_class->regulator[0],
 					a53_clk.c.vdd_class->vdd_uv[i]);
-		if (uv[0] < 0 || uv[1] < 0)
+		if (uv < 0)
 			return 0;
-		count += sprintf(buf + count, "A53upper-%lumhz: %d mV\n",
+		count += sprintf(buf + count, "A53-%lumhz: %d mV\n",
 					a53_clk.c.fmax[i] / 1000000,
-					uv[0] / 1000);
-		count += sprintf(buf + count, "A53lower-%lumhz: %d mV\n",
-					a53_clk.c.fmax[i] / 1000000,
-					uv[1] / 1000);
-		kfree(uv);
+					uv / 1000);
 	}
-
-	/* Note that we ignore the first few freq due to Mux bug */
-	for (i = 4; i < a57_clk.c.num_fmax; i++) {
+	for (i = 1; i < a57_clk.c.num_fmax; i++) {
 		uv = cpr_regulator_get_corner_voltage(
 					a57_clk.c.vdd_class->regulator[0],
 					a57_clk.c.vdd_class->vdd_uv[i]);
-		if (uv[0] < 0 || uv[1] < 0)
+		if (uv < 0)
 			return 0;
-		count += sprintf(buf + count, "A57upper-%lumhz: %d mV\n",
+		count += sprintf(buf + count, "A57-%lumhz: %d mV\n",
 					a57_clk.c.fmax[i] / 1000000,
-					uv[0] / 1000);
-		count += sprintf(buf + count, "A57lower-%lumhz: %d mV\n",
-					a57_clk.c.fmax[i] / 1000000,
-					uv[1] / 1000);
-		kfree(uv);
+					uv / 1000);
 	}
-
 	return count;
 }
-
 ssize_t cpu_clock_set_vdd(const char *buf, size_t count)
 {
-	int i, bound, mv, ret, uv[2];
+	int i, mv, ret;
 	char line[32];
-
 	if (!buf)
 		return -EINVAL;
-
-	pr_info("voltage_control: %s\n", buf);
-
-	/* Write values for A53 */
 	for (i = 1; i < a53_clk.c.num_fmax; i++) {
-		/* Parse buffer */
-		for(bound = 0; bound < 2; bound ++) {
-			ret = sscanf(buf, "%d", &mv);
-			if (ret != 1)
-				return -EINVAL;
-
-			uv[bound] = mv * 1000;
-
-			ret = sscanf(buf, "%s", line);
-			buf += strlen(line) + 1;
-		}
-
-		/* Write the values */
+		ret = sscanf(buf, "%d", &mv);
+		if (ret != 1)
+			return -EINVAL;
 		ret = cpr_regulator_set_corner_voltage(
 					a53_clk.c.vdd_class->regulator[0],
 					a53_clk.c.vdd_class->vdd_uv[i],
-					uv);
-		if (ret < 0)
+					mv * 1000);
+        if (ret < 0)
 			return ret;
+        ret = sscanf(buf, "%s", line);
+		buf += strlen(line) + 1;
 	}
-
-	/* Write values for A57 */
-	for (i = 1; i < a57_clk.c.num_fmax - 3; i++) {
-		/* Parse buffer */
-		for(bound = 0; bound < 2; bound ++) {
-			ret = sscanf(buf, "%d", &mv);
-			if (ret != 1)
-				return -EINVAL;
-
-			uv[bound] = mv * 1000;
-
-			ret = sscanf(buf, "%s", line);
-			buf += strlen(line) + 1;
-		}
-
-		/* Write the values */
+	for (i = 1; i < a57_clk.c.num_fmax; i++) {
+		ret = sscanf(buf, "%d", &mv);
+		if (ret != 1)
+			return -EINVAL;
 		ret = cpr_regulator_set_corner_voltage(
 					a57_clk.c.vdd_class->regulator[0],
-					a57_clk.c.vdd_class->vdd_uv[i + 3],
-					uv);
-		if (ret < 0)
+					a57_clk.c.vdd_class->vdd_uv[i],
+					mv * 1000);
+        if (ret < 0)
 			return ret;
+        ret = sscanf(buf, "%s", line);
+		buf += strlen(line) + 1;
 	}
-
 	return count;
 }
 #endif
