@@ -1,0 +1,11 @@
+### Hydrogen features ###
+
+-voltage control
+
+-built with gcc 8.2.1
+
+-makefile optimisations
+
+-upstream to 3.10.108
+
+-vibration control
