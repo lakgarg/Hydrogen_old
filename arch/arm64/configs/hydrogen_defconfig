@@ -724,3 +724,8 @@ CONFIG_ADRENO_IDLER=y
 # Qnovo
 #
 CONFIG_QNS_SYSTEM=y
+
+#
+# Frandom
+#
+CONFIG_FRANDOM=y
