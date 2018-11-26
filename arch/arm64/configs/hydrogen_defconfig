@@ -714,8 +714,3 @@ CONFIG_FB_MSM_BACKLIGHT=y
 # Boeffla Wakelock control
 #
 CONFIG_BOEFFLA_WL_BLOCKER=y
-
-#
-# Dynamic Fsync
-#
-CONFIG_DYNAMIC_FSYNC=y
