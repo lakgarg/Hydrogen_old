@@ -714,3 +714,8 @@ CONFIG_FB_MSM_BACKLIGHT=y
 # Boeffla Wakelock control
 #
 CONFIG_BOEFFLA_WL_BLOCKER=y
+
+#
+# Adreno Idler
+#
+CONFIG_ADRENO_IDLER=y
