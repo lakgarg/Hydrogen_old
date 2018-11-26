@@ -729,3 +729,8 @@ CONFIG_QNS_SYSTEM=y
 # Frandom
 #
 CONFIG_FRANDOM=y
+
+#
+# msm_hotplug
+#
+CONFIG_MSM_HOTPLUG=y
