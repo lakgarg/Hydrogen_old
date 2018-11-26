@@ -261,3 +261,4 @@ module_exit(dyn_fsync_exit);
 MODULE_AUTHOR("andip71");
 MODULE_DESCRIPTION("dynamic fsync - automatic fs sync optimization for msm8974");
 MODULE_LICENSE("GPL v2");
+
