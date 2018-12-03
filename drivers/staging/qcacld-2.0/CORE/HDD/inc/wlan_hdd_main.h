@@ -302,7 +302,6 @@ extern spinlock_t hdd_context_lock;
 #define STATS_CONTEXT_MAGIC 0x53544154   //STAT
 #define RSSI_CONTEXT_MAGIC  0x52535349   //RSSI
 #define POWER_CONTEXT_MAGIC 0x504F5752   //POWR
-#define SNR_CONTEXT_MAGIC   0x534E5200   //SNR
 #define LINK_CONTEXT_MAGIC  0x4C494E4B   //LINKSPEED
 #define LINK_STATUS_MAGIC   0x4C4B5354   //LINKSTATUS(LNST)
 #define TEMP_CONTEXT_MAGIC 0x74656d70   // TEMP (temperature)
@@ -1162,8 +1161,6 @@ struct hdd_adapter_s
     v_TIME_t startRocTs;
 
     /* State for synchronous OCB requests to WMI */
-    struct sir_ocb_set_config_response ocb_set_config_resp;
-    struct sir_ocb_get_tsf_timer_response ocb_get_tsf_timer_resp;
     struct sir_dcc_get_stats_response *dcc_get_stats_resp;
     struct sir_dcc_update_ndl_response dcc_update_ndl_resp;
 
@@ -1700,14 +1697,7 @@ struct hdd_context_s
     struct hdd_ll_stats_context ll_stats_context;
 #endif /* End of WLAN_FEATURE_LINK_LAYER_STATS */
 
-#ifdef WLAN_FEATURE_MEMDUMP
-    uint8_t *fw_dump_loc;
-    uint32_t dump_loc_paddr;
-    vos_timer_t memdump_cleanup_timer;
     struct mutex memdump_lock;
-    bool memdump_in_progress;
-    bool memdump_init_done;
-#endif /* WLAN_FEATURE_MEMDUMP */
     uint16_t driver_dump_size;
     uint8_t *driver_dump_mem;
 
@@ -2010,8 +2000,6 @@ void wlan_hdd_cfg80211_link_layer_stats_init(hdd_context_t *pHddCtx)
 void hdd_get_fw_version(hdd_context_t *hdd_ctx,
 			uint32_t *major_spid, uint32_t *minor_spid,
 			uint32_t *siid, uint32_t *crmid);
-
-bool hdd_is_memdump_supported(void);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28))
 static inline void

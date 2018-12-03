@@ -93,6 +93,9 @@ typedef tANI_U8 tSirVersionString[SIR_VERSION_STRING_LEN];
 
 #define MAX_LEN_UDP_RESP_OFFLOAD 128
 
+/* Maximum peer station number query one time */
+#define MAX_PEER_STA 12
+
 #ifdef FEATURE_WLAN_EXTSCAN
 
 #define WLAN_EXTSCAN_MAX_CHANNELS                 36
@@ -4653,6 +4656,16 @@ struct sir_rssi_resp {
 	struct sir_rssi_info info[0];
 };
 
+/**
+ * @sta_num: number of peer station which has valid info
+ * @info: peer information
+ *
+ * all SAP peer station's information retrieved
+ */
+struct sir_peer_sta_info {
+	uint8_t sta_num;
+	struct sir_rssi_info info[MAX_PEER_STA];
+};
 
 typedef struct sSirAddPeriodicTxPtrn
 {
@@ -6510,61 +6523,6 @@ struct sir_guard_time_request {
 
 /* Max number of rates allowed in Supported Rates IE */
 #define MAX_NUM_SUPPORTED_RATES (8)
-
-#define MAX_NUM_FW_SEGMENTS 4
-
-/**
- * struct fw_dump_seg_req - individual segment details
- * @seg_id - segment id.
- * @seg_start_addr_lo - lower address of the segment.
- * @seg_start_addr_hi - higher address of the segment.
- * @seg_length - length of the segment.
- * @dst_addr_lo - lower address of the destination buffer.
- * @dst_addr_hi - higher address of the destination buffer.
- *
- * This structure carries the information to firmware about the
- * individual segments. This structure is part of firmware memory
- * dump request.
- */
-struct fw_dump_seg_req
-{
-	uint8_t seg_id;
-	uint32_t seg_start_addr_lo;
-	uint32_t seg_start_addr_hi;
-	uint32_t seg_length;
-	uint32_t dst_addr_lo;
-	uint32_t dst_addr_hi;
-};
-
-/**
- * struct fw_dump_req - firmware memory dump request details.
- * @request_id - request id.
- * @num_seg - requested number of segments.
- * @fw_dump_seg_req - individual segment information.
- *
- * This structure carries information about the firmware
- * memory dump request.
- */
-struct fw_dump_req
-{
-	uint32_t request_id;
-	uint32_t num_seg;
-	struct fw_dump_seg_req segment[MAX_NUM_FW_SEGMENTS];
-};
-
-/**
- * struct fw_dump_rsp - firmware dump response details.
- * @request_id - request id.
- * @dump_complete - copy completion status.
- *
- * This structure is used to store the firmware dump copy complete
- * response from the firmware.
- */
-struct fw_dump_rsp
-{
-	uint32_t request_id;
-	uint32_t dump_complete;
-};
 
 /**
  * struct vdev_ie_info - IE info

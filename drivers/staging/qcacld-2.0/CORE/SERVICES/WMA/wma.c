@@ -855,6 +855,11 @@ static void wma_lost_link_info_handler(tp_wma_handle wma, uint32_t vdev_id,
 	struct sir_lost_link_info *lost_link_info;
 	VOS_STATUS vos_status;
 	vos_msg_t sme_msg = {0};
+	if (vdev_id >= wma->max_bssid) {
+		WMA_LOGE("%s: received invalid vdev_id %d",
+			 __func__, vdev_id);
+		return;
+	}
 	/* report lost link information only for STA mode */
 	if (wma->interfaces[vdev_id].vdev_up &&
 	    (WMI_VDEV_TYPE_STA == wma->interfaces[vdev_id].type) &&
@@ -2847,49 +2852,6 @@ static void wma_post_link_status(tAniGetLinkStatus *pGetLinkStatus,
 	}
 }
 
-#ifdef WLAN_FEATURE_MEMDUMP
-/**
- * wma_fw_mem_dump_rsp() - send fw mem dump response to SME
- *
- * @req_id - request id.
- * @status - copy status from the firmware.
- *
- * This function is called by the memory dump response handler to
- * indicate SME that firmware dump copy is complete
- */
-static VOS_STATUS wma_fw_mem_dump_rsp(uint32_t req_id, uint32_t status)
-{
-	struct fw_dump_rsp *dump_rsp;
-	vos_msg_t sme_msg = {0} ;
-	VOS_STATUS vos_status = VOS_STATUS_SUCCESS;
-
-	dump_rsp = vos_mem_malloc(sizeof(*dump_rsp));
-
-	if (!dump_rsp) {
-		WMA_LOGE(FL("Memory allocation failed."));
-		vos_status = VOS_STATUS_E_NOMEM;
-		return vos_status;
-	}
-
-	WMA_LOGI(FL("FW memory dump copy complete status: %d for request: %d"),
-		 status, req_id);
-
-	dump_rsp->request_id = req_id;
-	dump_rsp->dump_complete = status;
-
-	sme_msg.type = eWNI_SME_FW_DUMP_IND;
-	sme_msg.bodyptr = dump_rsp;
-	sme_msg.bodyval = 0;
-
-	vos_status = vos_mq_post_message(VOS_MODULE_ID_SME, &sme_msg);
-	if (!VOS_IS_STATUS_SUCCESS(vos_status)) {
-		WMA_LOGE(FL("Fail to post fw mem dump ind msg"));
-		vos_mem_free(dump_rsp);
-	}
-
-	return vos_status;
-}
-#endif /* WLAN_FEATURE_MEMDUMP */
 
 static int wma_link_status_rsp(tp_wma_handle wma, u_int8_t *buf)
 {
@@ -4412,7 +4374,8 @@ static int wma_passpoint_match_event_handler(void *handle,
 	struct wifi_passpoint_match  *dest_match;
 	tSirWifiScanResult      *dest_ap;
 	uint8_t *buf_ptr;
-
+	uint32_t buf_len = 0;
+	bool excess_data = false;
 	tpAniSirGlobal pMac = (tpAniSirGlobal )vos_get_context(
 					VOS_MODULE_ID_PE, wma->vos_context);
 	if (!pMac) {
@@ -4431,14 +4394,28 @@ static int wma_passpoint_match_event_handler(void *handle,
 	event = param_buf->fixed_param;
 	buf_ptr = (uint8_t *)param_buf->fixed_param;
 
-	/*
-	 * All the below lengths are UINT32 and summing up and checking
-	 * against a constant should not be an issue.
-	 */
-	if ((sizeof(*event) + event->ie_length + event->anqp_length) >
-			WMA_SVC_MSG_MAX_SIZE) {
-		WMA_LOGE("IE Length: %d or ANQP Length: %d is huge",
-				event->ie_length, event->anqp_length);
+	do {
+		if (event->ie_length > (WMA_SVC_MSG_MAX_SIZE)) {
+			excess_data = true;
+			break;
+		} else {
+			buf_len = event->ie_length;
+		}
+
+		if (event->anqp_length > (WMA_SVC_MSG_MAX_SIZE)) {
+			excess_data = true;
+			break;
+		} else {
+			buf_len += event->anqp_length;
+		}
+	} while (0);
+
+	if (excess_data || buf_len > (WMA_SVC_MSG_MAX_SIZE - sizeof(*event)) ||
+	    buf_len > (WMA_SVC_MSG_MAX_SIZE - sizeof(*dest_match)) ||
+	    (event->ie_length + event->anqp_length) > param_buf->num_bufp) {
+		WMA_LOGE("IE Length: %d or ANQP Length: %d is huge, num_bufp %d",
+			 event->ie_length, event->anqp_length,
+			 param_buf->num_bufp);
 		return -EINVAL;
 	}
 	if (event->ssid.ssid_len > SIR_MAC_MAX_SSID_LENGTH) {
@@ -4446,8 +4423,7 @@ static int wma_passpoint_match_event_handler(void *handle,
 			__func__, event->ssid.ssid_len);
 		event->ssid.ssid_len = SIR_MAC_MAX_SSID_LENGTH;
 	}
-	dest_match = vos_mem_malloc(sizeof(*dest_match) +
-				event->ie_length + event->anqp_length);
+	dest_match = vos_mem_malloc(sizeof(*dest_match) + buf_len);
 	if (!dest_match) {
 		WMA_LOGE("%s: vos_mem_malloc failed", __func__);
 		return -EINVAL;
@@ -5109,48 +5085,6 @@ static int wma_unified_link_radio_stats_event_handler(void *handle,
 
 #endif /* WLAN_FEATURE_LINK_LAYER_STATS */
 
-/**
- * wma_fw_mem_dump_event_handler() - handles fw memory dump event
- *
- * handle - pointer to wma handle.
- * cmd_param_info - pointer to TLV info received in the event.
- * len - length of data in @cmd_param_info
- *
- * This function is a handler for firmware memory dump event.
- */
-#ifdef WLAN_FEATURE_MEMDUMP
-static int wma_fw_mem_dump_event_handler(void *handle, u_int8_t *cmd_param_info,
-					 u_int32_t len)
-{
-	WMI_UPDATE_FW_MEM_DUMP_EVENTID_param_tlvs *param_buf;
-	wmi_update_fw_mem_dump_fixed_param *event;
-	VOS_STATUS status;
-
-	param_buf =
-	    (WMI_UPDATE_FW_MEM_DUMP_EVENTID_param_tlvs *) cmd_param_info;
-	if (!param_buf) {
-		WMA_LOGA("%s: Invalid stats event", __func__);
-		return -EINVAL;
-	}
-
-	event = param_buf->fixed_param;
-
-	status = wma_fw_mem_dump_rsp(event->request_id,
-					 event->fw_mem_dump_complete);
-	if (VOS_STATUS_SUCCESS != status) {
-		return -EINVAL;
-	}
-
-	WMA_LOGI("FW MEM DUMP RSP posted successfully");
-	return 0;
-}
-#else
-static int wma_fw_mem_dump_event_handler(void *handle, u_int8_t *cmd_param_info,
-					 u_int32_t len)
-{
-	return 0;
-}
-#endif /* WLAN_FEATURE_MEMDUMP */
 
 u_int8_t *wma_add_p2p_ie(u_int8_t *frm)
 {
@@ -6344,7 +6278,8 @@ static int wma_nan_rsp_event_handler(void *handle, u_int8_t *event_buf,
 	alloc_len = sizeof(tSirNanEvent);
 	alloc_len += nan_rsp_event_hdr->data_len;
 	if (nan_rsp_event_hdr->data_len > ((WMA_SVC_MSG_MAX_SIZE -
-	    sizeof(*nan_rsp_event_hdr)) / sizeof(u_int8_t))) {
+	    sizeof(*nan_rsp_event_hdr)) / sizeof(u_int8_t)) ||
+	    nan_rsp_event_hdr->data_len > param_buf->num_data)  {
 		WMA_LOGE("excess data length:%d", nan_rsp_event_hdr->data_len);
 		VOS_ASSERT(0);
 		return -EINVAL;
@@ -7629,12 +7564,6 @@ VOS_STATUS WDA_open(v_VOID_t *vos_context, v_VOID_t *os_ctx,
 	wma_register_ll_stats_event_handler(wma_handle);
 
 #endif /* WLAN_FEATURE_LINK_LAYER_STATS */
-	/* Register event handler to receive firmware mem dump
-	 * copy complete indication
-	 */
-	wmi_unified_register_event_handler(wma_handle->wmi_handle,
-		WMI_UPDATE_FW_MEM_DUMP_EVENTID,
-		wma_fw_mem_dump_event_handler);
 
 	wmi_set_tgt_assert(wma_handle->wmi_handle,
 			   mac_params->force_target_assert_enabled);
@@ -29086,111 +29015,6 @@ VOS_STATUS wma_config_guard_time(tp_wma_handle wma,
 	return ret;
 }
 
-#ifdef WLAN_FEATURE_MEMDUMP
-/*
- * wma_process_fw_mem_dump_req() - Function to request fw memory dump from
- *				   firmware
- * @wma:                Pointer to WMA handle
- * @mem_dump_req:       Pointer for mem_dump_req
- *
- * This function sends memory dump request to firmware
- *
- * Return: VOS_STATUS_SUCCESS for success otherwise failure
- *
- */
-static VOS_STATUS wma_process_fw_mem_dump_req(tp_wma_handle wma,
-					struct fw_dump_req* mem_dump_req)
-{
-	wmi_get_fw_mem_dump_fixed_param *cmd;
-	wmi_fw_mem_dump *dump_params;
-	struct fw_dump_seg_req *seg_req;
-	int32_t len;
-	wmi_buf_t buf;
-	u_int8_t *buf_ptr;
-	int ret, loop;
-
-	if (!mem_dump_req || !wma) {
-		WMA_LOGE(FL("input pointer is NULL"));
-		return VOS_STATUS_E_FAILURE;
-	}
-
-	/*
-	 * len = sizeof(fixed param) that includes tlv header +
-	 *       tlv header for array of struc +
-	 *       sizeof (each struct)
-	 */
-	len = sizeof(*cmd) + WMI_TLV_HDR_SIZE;
-	len += mem_dump_req->num_seg * sizeof(wmi_fw_mem_dump);
-	buf = wmi_buf_alloc(wma->wmi_handle, len);
-
-	if (!buf) {
-		WMA_LOGE(FL("Failed allocate wmi buffer"));
-		return VOS_STATUS_E_NOMEM;
-        }
-
-	buf_ptr = (u_int8_t *) wmi_buf_data(buf);
-	vos_mem_zero(buf_ptr, len);
-	cmd = (wmi_get_fw_mem_dump_fixed_param *) buf_ptr;
-
-	WMITLV_SET_HDR(&cmd->tlv_header,
-		WMITLV_TAG_STRUC_wmi_get_fw_mem_dump_fixed_param,
-		WMITLV_GET_STRUCT_TLVLEN(wmi_get_fw_mem_dump_fixed_param));
-
-	cmd->request_id = mem_dump_req->request_id;
-	cmd->num_fw_mem_dump_segs = mem_dump_req->num_seg;
-
-	/* TLV indicating array of structures to follow */
-	buf_ptr += sizeof(wmi_get_fw_mem_dump_fixed_param);
-	WMITLV_SET_HDR(buf_ptr, WMITLV_TAG_ARRAY_STRUC,
-		       sizeof(wmi_fw_mem_dump) *
-		       cmd->num_fw_mem_dump_segs);
-
-	buf_ptr += WMI_TLV_HDR_SIZE;
-	dump_params = (wmi_fw_mem_dump *) buf_ptr;
-
-	WMA_LOGI(FL("request_id:%d num_seg:%d"),
-		    mem_dump_req->request_id, mem_dump_req->num_seg);
-	for (loop = 0; loop < cmd->num_fw_mem_dump_segs; loop++) {
-		seg_req = (struct fw_dump_seg_req *)
-			  ((uint8_t *)(mem_dump_req->segment) +
-			    loop * sizeof(*seg_req));
-		WMITLV_SET_HDR(&dump_params->tlv_header,
-			    WMITLV_TAG_STRUC_wmi_fw_mem_dump_params,
-			    WMITLV_GET_STRUCT_TLVLEN(wmi_fw_mem_dump));
-		dump_params->seg_id = seg_req->seg_id;
-		dump_params->seg_start_addr_lo = seg_req-> seg_start_addr_lo;
-		dump_params->seg_start_addr_hi = seg_req->seg_start_addr_hi;
-		dump_params->seg_length = seg_req->seg_length;
-		dump_params->dest_addr_lo = seg_req->dst_addr_lo;
-		dump_params->dest_addr_hi = seg_req->dst_addr_hi;
-		WMA_LOGI(FL("seg_number:%d"), loop);
-		WMA_LOGI(FL("seg_id:%d start_addr_lo:0x%x start_addr_hi:0x%x"),
-			 dump_params->seg_id, dump_params->seg_start_addr_lo,
-			 dump_params->seg_start_addr_hi);
-		WMA_LOGI(FL("seg_length:%d dst_addr_lo:0x%x dst_addr_hi:0x%x"),
-			 dump_params->seg_length, dump_params->dest_addr_lo,
-			 dump_params->dest_addr_hi);
-		dump_params++;
-	}
-
-	ret = wmi_unified_cmd_send(wma->wmi_handle, buf, len,
-				   WMI_GET_FW_MEM_DUMP_CMDID);
-        if (ret) {
-		WMA_LOGE(FL("Failed to send get firmware mem dump request"));
-		wmi_buf_free(buf);
-		return VOS_STATUS_E_FAILURE;
-        }
-
-	WMA_LOGI(FL("Get firmware mem dump request sent successfully"));
-	return VOS_STATUS_SUCCESS;
-}
-#else
-static VOS_STATUS wma_process_fw_mem_dump_req(tp_wma_handle wma,
-                                        void *mem_dump_req)
-{
-	return VOS_STATUS_SUCCESS;
-}
-#endif /* WLAN_FEATURE_MEMDUMP */
 
 /*
  * wma_process_set_ie_info() - Function to send IE info to firmware
@@ -30988,11 +30812,6 @@ VOS_STATUS wma_mc_process_msg(v_VOID_t *vos_context, vos_msg_t *msg)
 				(struct sir_guard_time_request *)msg->bodyptr);
 			vos_mem_free(msg->bodyptr);
 			break;
-		case WDA_FW_MEM_DUMP_REQ:
-			wma_process_fw_mem_dump_req(wma_handle,
-				(struct fw_dump_req*)msg->bodyptr);
-			vos_mem_free(msg->bodyptr);
-                        break;
 		case SIR_HAL_START_STOP_LOGGING:
 			wma_set_wifi_start_packet_stats(wma_handle,
 				(struct sir_wifi_start_log *)msg->bodyptr);
@@ -31675,6 +31494,7 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 	u_int8_t ssid_tmp[WMI_MAX_SSID_LEN + 1];
 	u_int8_t *mac;
 	u_int32_t vdev_id;
+	u_int32_t buf_len;
 
 	if (!param_buf) {
 		WMA_LOGE("Invalid APFIND event buffer");
@@ -31682,8 +31502,36 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 	}
 
 	apfind_event_hdr = param_buf->hdr;
-	WMA_LOGD("APFIND event received, id=%d, data_length=%d",
-		apfind_event_hdr->event_type, apfind_event_hdr->data_len);
+	WMA_LOGD("APFIND event received, id=%d, data_len=%d",
+		 apfind_event_hdr->event_type, apfind_event_hdr->data_len);
+
+	/* data_len = WMI_TLV_HDR_SIZE + length of data */
+	if (apfind_event_hdr->data_len <= WMI_TLV_HDR_SIZE) {
+		WMA_LOGE("APFIND event with no data");
+		return -EINVAL;
+	}
+
+	buf_len = param_buf->num_data;
+	if (buf_len != (apfind_event_hdr->data_len - WMI_TLV_HDR_SIZE)) {
+		WMA_LOGE("APFIND event with unmatched len: %u - %u",
+			 buf_len, apfind_event_hdr->data_len);
+		return -EINVAL;
+	}
+
+	if ((apfind_event_hdr->data_len >
+	     (len - sizeof(wmi_apfind_event_hdr))) ||
+	    (apfind_event_hdr->data_len >
+	     (WMA_SVC_MSG_MAX_SIZE - sizeof(wmi_apfind_event_hdr)))) {
+		WMA_LOGE("APFIND event with invalid data_len: %u",
+			 apfind_event_hdr->data_len);
+		return -EINVAL;
+	}
+
+	if (buf_len < WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN) {
+		WMA_LOGE("APFIND event with invalid buf_len: %u", buf_len);
+		return -EINVAL;
+	}
+
 	buf = param_buf->data;
 	A_MEMZERO(ssid_tmp, sizeof(ssid_tmp));
 	A_MEMCPY(ssid_tmp, buf, WMI_MAX_SSID_LEN);
@@ -31692,15 +31540,18 @@ static int wma_apfind_evt_handler(void *handle, u_int8_t *event,
 
 	buf = &param_buf->data[WMI_MAX_SSID_LEN];
 	mac = buf;
-	WMA_LOGD("%s, APFIND dump mac=0x%08X-0x%08X",
-		__func__, *(u_int32_t *)buf, *(u_int32_t *)(buf + sizeof(u_int32_t)));
+	WMA_LOGD("%s, APFIND dump mac=%pM", __func__, mac);
 
-	if (apfind_event_hdr->data_len >=
-		(WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN + sizeof(vdev_id)
-		+ sizeof(apfind_event_hdr->tlv_header))) {
+	if (buf_len >=
+	    (WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN + sizeof(vdev_id))) {
 		/* FW had the tlv_header len calculated into the data_len */
 		buf = &param_buf->data[WMI_MAX_SSID_LEN + IEEE80211_ADDR_LEN];
 		vdev_id = *(u_int32_t*) buf;
+		if (vdev_id >= wma->max_bssid) {
+			WMA_LOGE("%s: received invalid vdev_id %d",
+				 __func__, vdev_id);
+			return -EINVAL;
+		}
 
 		/* to trigger AP re-connection after QRF wakeup*/
 		WMA_LOGA("%s, trigger AP re-connection at QRF wakeup (APFIND_WAKEUP_EVENT), vdev_id=%d, SSID=%s",
