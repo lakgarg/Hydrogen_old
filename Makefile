@@ -439,36 +439,20 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
                    -mcpu=cortex-a57.cortex-a53+crypto+crc -mtune=cortex-a57.cortex-a53 \
 				   -fno-strict-aliasing -fno-common \
 				   -Werror-implicit-function-declaration \
-				   -Wno-format-security \
 		           -fno-delete-null-pointer-checks \
 		           -std=gnu89 -Wno-unused-const-variable -Wno-misleading-indentation \
 		           -no-pie -fno-pic \
+		           -Wno-switch-unreachable \
+		           -Wno-format-truncation \
 		           -Ofast -fno-inline-functions \
 		           -fgcse-sm -fsched-spec-load \
 		           -fsingle-precision-constant \
                    -fno-delete-null-pointer-checks \
-                   -Wno-memset-transposed-args  -Wno-bool-compare -Wno-logical-not-parentheses \
-		           -Wno-switch-bool \
-		           -Wno-multistatement-macros \
-		           -Wno-bool-operation -Wno-nonnull -Wno-switch-unreachable -Wno-format-truncation -Wno-format-overflow -Wno-duplicate-decl-specifier -Wno-memset-elt-size -Wno-int-in-bool-context \
 		           -mstrict-align \
 		           -mfix-cortex-a53-843419 -mfix-cortex-a53-835769 \
 		           $(GEN_OPT_FLAGS) \
 		           $(GRAPHITE) \
                    $(FLAGS_OPTIMIZE)
-
-
-# Thanks gcc!
-KBUILD_CFLAGS   += -Wno-trigraphs -Wno-unused-label -Wno-array-bounds -Wno-memset-transposed-args \
-                   -Wno-declaration-after-statement -Wno-unused-variable -Wno-parentheses -Wno-maybe-uninitialized \
-                   -Wno-misleading-indentation -Wno-bool-compare -Wno-int-conversion \
-                   -Wno-discarded-qualifiers -Wno-tautological-compare -Wno-incompatible-pointer-types \
-		           -Wno-error=maybe-uninitialized -Wno-bool-compare -Wno-misleading-indentation \
-	               -Wno-format -Wno-logical-not-parentheses -Wno-int-in-bool-context -Wno-memset-elt-size \
-                   -Wno-parentheses -Wno-bool-operation -Wno-duplicate-decl-specifier -Wno-stringop-overflow \
-                   -Wno-format-truncation -Wno-format-overflow -fno-modulo-sched -Wno-error=switch-unreachable \
-		           -Wno-switch-unreachable -Wno-error=packed-not-aligned -Wno-packed-not-aligned -Wno-stringop-truncation\
-                   -Wno-sizeof-pointer-memaccess -Wno-unused-function
 
 KBUILD_CFLAGS += $(call cc-disable-warning,unused-function,)
 
