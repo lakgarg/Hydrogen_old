@@ -43,8 +43,6 @@ struct cpufreq_interactive_cpuinfo {
 	int idling;
 	u64 target_set_time;
 	u64 target_set_time_in_idle;
-	u64 target_validate_time;
-	u64 target_validate_time_in_idle;
 	struct cpufreq_policy *policy;
 	struct cpufreq_frequency_table *freq_table;
 	unsigned int target_freq;
@@ -188,10 +186,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	/*
 	 * Do not scale down unless we have been at this frequency for the
-	 * minimum sample time since last validated.
+	 * minimum sample time.
 	 */
 	if (new_freq < pcpu->target_freq) {
-		if (pcpu->timer_run_time - pcpu->target_validate_time
+		if (pcpu->timer_run_time - pcpu->target_set_time
 		    < min_sample_time) {
 			trace_cpufreq_interactive_notyet(data, cpu_load,
 					 pcpu->target_freq, new_freq);
@@ -199,8 +197,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 		}
 	}
 
-	pcpu->target_validate_time_in_idle = now_idle;
-	pcpu->target_validate_time = pcpu->timer_run_time;
+	pcpu->target_set_time_in_idle = now_idle;
+	pcpu->target_set_time = pcpu->timer_run_time;
 
 	if (pcpu->target_freq == new_freq) {
 		trace_cpufreq_interactive_already(data, cpu_load,
@@ -210,8 +208,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 
 	trace_cpufreq_interactive_target(data, cpu_load, pcpu->target_freq,
 					 new_freq);
-	pcpu->target_set_time_in_idle = now_idle;
-	pcpu->target_set_time = pcpu->timer_run_time;
 
 	if (new_freq < pcpu->target_freq) {
 		pcpu->target_freq = new_freq;
@@ -535,10 +531,6 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			pcpu->target_set_time_in_idle =
 				get_cpu_idle_time_us(j,
 					     &pcpu->target_set_time);
-			pcpu->target_validate_time =
-				pcpu->target_set_time;
-			pcpu->target_validate_time_in_idle =
-				pcpu->target_set_time_in_idle;
 			pcpu->governor_enabled = 1;
 			smp_wmb();
 		}
