@@ -380,6 +380,4 @@ static inline ktime_t ms_to_ktime(u64 ms)
 	return ktime_add_ms(ktime_zero, ms);
 }
 
-# include <linux/timekeeping.h>
-
 #endif
