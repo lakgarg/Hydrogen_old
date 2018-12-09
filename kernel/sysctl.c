@@ -288,7 +288,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
-#ifndef CONFIG_SCHED_HMP
 	{
 		.procname	= "sched_wake_to_idle",
 		.data		= &sysctl_sched_wake_to_idle,
@@ -296,7 +295,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
-#endif
 	{
 		.procname	= "sched_wakeup_load_threshold",
 		.data		= &sysctl_sched_wakeup_load_threshold,
@@ -372,6 +370,7 @@ static struct ctl_table kern_table[] = {
 		.mode           = 0644,
 		.proc_handler   = sched_window_update_handler,
 	},
+#ifdef CONFIG_SCHED_QHMP
 	{
 		.procname	= "sched_small_task",
 		.data		= &sysctl_sched_small_task_pct,
@@ -386,6 +385,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler   = sched_hmp_proc_update_handler,
 	},
+#endif
 	{
 		.procname	= "sched_spill_load",
 		.data		= &sysctl_sched_spill_load_pct,
@@ -451,6 +451,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+#ifdef CONFIG_SCHED_FREQ_INPUT
 	{
 		.procname       = "sched_new_task_windows",
 		.data           = &sysctl_sched_new_task_windows,
@@ -458,6 +459,7 @@ static struct ctl_table kern_table[] = {
 		.mode           = 0644,
 		.proc_handler   = sched_window_update_handler,
 	},
+#endif
 #endif
 	{
 		.procname	= "sched_boost",
