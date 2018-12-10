@@ -15,6 +15,7 @@
  * Author: Mike Chan (mike@android.com)
  *
  */
+
 #include <linux/cpu.h>
 #include <linux/cpumask.h>
 #include <linux/cpufreq.h>
@@ -707,11 +708,13 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			spin_unlock_irqrestore(&speedchange_cpumask_lock,
 					       flags);
 			schedule();
+
 			if (kthread_should_stop())
 				break;
 
 			spin_lock_irqsave(&speedchange_cpumask_lock, flags);
 		}
+
 		set_current_state(TASK_RUNNING);
 		tmp_mask = speedchange_cpumask;
 		cpumask_clear(&speedchange_cpumask);
@@ -736,6 +739,7 @@ static int cpufreq_interactive_speedchange_task(void *data)
 			up_read(&ppol->enable_sem);
 		}
 	}
+
 	return 0;
 }
 
@@ -1018,7 +1022,7 @@ static ssize_t store_hispeed_freq(struct cpufreq_interactive_tunables *tunables,
 	int ret;
 	long unsigned int val;
 
-	ret = strict_strtoul(buf, 0, &val);
+	ret = kstrtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
 	tunables->hispeed_freq = val;
@@ -1061,7 +1065,8 @@ static ssize_t store_go_hispeed_load(struct cpufreq_interactive_tunables
 {
 	int ret;
 	unsigned long val;
-	ret = strict_strtoul(buf, 0, &val);
+
+	ret = kstrtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
 	tunables->go_hispeed_load = val;
@@ -1079,7 +1084,8 @@ static ssize_t store_min_sample_time(struct cpufreq_interactive_tunables
 {
 	int ret;
 	unsigned long val;
-	ret = strict_strtoul(buf, 0, &val);
+
+	ret = kstrtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
 	tunables->min_sample_time = val;
@@ -1770,6 +1776,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 		mutex_unlock(&gov_lock);
 		break;
+
 	case CPUFREQ_GOV_STOP:
 		mutex_lock(&gov_lock);
 
@@ -1785,6 +1792,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 
 		mutex_unlock(&gov_lock);
 		break;
+
 	case CPUFREQ_GOV_LIMITS:
 		ppol = per_cpu(polinfo, policy->cpu);
 
@@ -1836,11 +1844,13 @@ static int __init cpufreq_interactive_init(void)
 
 	return cpufreq_register_governor(&cpufreq_gov_interactive);
 }
+
 #ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE
 fs_initcall(cpufreq_interactive_init);
 #else
 module_init(cpufreq_interactive_init);
 #endif
+
 static void __exit cpufreq_interactive_exit(void)
 {
 	int cpu;
@@ -1852,8 +1862,11 @@ static void __exit cpufreq_interactive_exit(void)
 	for_each_possible_cpu(cpu)
 		free_policyinfo(cpu);
 }
+
 module_exit(cpufreq_interactive_exit);
+
 MODULE_AUTHOR("Mike Chan <mike@android.com>");
 MODULE_DESCRIPTION("'cpufreq_interactive' - A cpufreq governor for "
 	"Latency sensitive workloads");
 MODULE_LICENSE("GPL");
+
