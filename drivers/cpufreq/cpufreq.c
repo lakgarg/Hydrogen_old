@@ -30,6 +30,7 @@
 #include <linux/tick.h>
 #include <linux/pm_opp.h>
 #include <trace/events/power.h>
+#include <linux/clk.h>
 
 /* HACK: Prevent big cluster turned off when changing governor settings. */
 #ifdef CONFIG_MSM_HOTPLUG
@@ -48,16 +49,6 @@ static DEFINE_RWLOCK(cpufreq_driver_lock);
 static DEFINE_MUTEX(cpufreq_governor_lock);
 static LIST_HEAD(cpufreq_policy_list);
 
-#ifdef CONFIG_HOTPLUG_CPU
-/* This one keeps track of the previously set governor of a removed CPU */
-static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
-#endif
-
-static inline bool has_target(void)
-{
-	return cpufreq_driver->target_index || cpufreq_driver->target;
-}
-
 /*
  * This one keeps track of the previously set governor and user-set
  * min/max freq of a removed CPU
@@ -67,7 +58,6 @@ struct cpufreq_cpu_save_data {
 	unsigned int max, min;
 };
 static DEFINE_PER_CPU(struct cpufreq_cpu_save_data, cpufreq_policy_save);
-#endif
 
 static inline bool has_target(void)
 {
@@ -376,6 +366,12 @@ EXPORT_SYMBOL_GPL(cpufreq_notify_transition);
 /*********************************************************************
  *                          SYSFS INTERFACE                          *
  *********************************************************************/
+
+static ssize_t show_boost(struct kobject *kobj,
+				 struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", cpufreq_driver->boost_enabled);
+}
 
 static struct cpufreq_governor *__find_governor(const char *str_governor)
 {
@@ -2273,6 +2269,16 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 static struct notifier_block __refdata cpufreq_cpu_notifier = {
 	.notifier_call = cpufreq_cpu_callback,
 };
+
+/*********************************************************************
+ *               BOOST						     *
+ *********************************************************************/
+
+int cpufreq_boost_enabled(void)
+{
+	return cpufreq_driver->boost_enabled;
+}
+EXPORT_SYMBOL_GPL(cpufreq_boost_enabled);
 
 /*********************************************************************
  *               REGISTER / UNREGISTER CPUFREQ DRIVER                *
