@@ -196,8 +196,8 @@ static int bL_cpufreq_set_target(struct cpufreq_policy *policy,
 	u32 cpu = policy->cpu, cur_cluster, new_cluster, actual_cluster;
 	unsigned int freqs_new;
 
-	return bL_cpufreq_set_rate(cpu, actual_cluster, new_cluster, freqs_new);
-}
+	cur_cluster = cpu_to_cluster(cpu);
+	new_cluster = actual_cluster = per_cpu(physical_cluster, cpu);
 
 	freqs_new = freq_table[cur_cluster][index].frequency;
 
@@ -245,7 +245,6 @@ static inline u32 get_table_max(struct cpufreq_frequency_table *table)
 			max_freq = pos->frequency;
 	return max_freq;
 }
->>>>>>> d4019f0a92ab... cpufreq: move freq change notifications to cpufreq core
 
 static int merge_cluster_tables(void)
 {
@@ -501,7 +500,7 @@ static struct cpufreq_driver bL_cpufreq_driver = {
 					CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.verify			= cpufreq_generic_frequency_table_verify,
 	.target_index		= bL_cpufreq_set_target,
-	.get			= bL_cpufreq_get,
+	.get			= bL_cpufreq_get_rate,
 	.init			= bL_cpufreq_init,
 	.exit			= bL_cpufreq_exit,
 	.attr			= cpufreq_generic_attr,
