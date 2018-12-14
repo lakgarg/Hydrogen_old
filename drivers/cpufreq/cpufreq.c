@@ -30,6 +30,7 @@
 #include <linux/tick.h>
 #include <linux/pm_opp.h>
 #include <trace/events/power.h>
+#include <linux/clk.h>
 
 /* HACK: Prevent big cluster turned off when changing governor settings. */
 #ifdef CONFIG_MSM_HOTPLUG
@@ -2255,6 +2256,15 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 static struct notifier_block __refdata cpufreq_cpu_notifier = {
 	.notifier_call = cpufreq_cpu_callback,
 };
+
+/*********************************************************************
+ *               BOOST						     *
+ *********************************************************************/
+ int cpufreq_boost_enabled(void)
+{
+	return cpufreq_driver->boost_enabled;
+}
+EXPORT_SYMBOL_GPL(cpufreq_boost_enabled);
 
 /*********************************************************************
  *               REGISTER / UNREGISTER CPUFREQ DRIVER                *

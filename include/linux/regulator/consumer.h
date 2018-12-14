@@ -148,6 +148,8 @@ struct regulator *__must_check devm_regulator_get(struct device *dev,
 					     const char *id);
 struct regulator *__must_check regulator_get_exclusive(struct device *dev,
 						       const char *id);
+struct regulator *__must_check regulator_get_optional(struct device *dev,
+													const char *id);
 void regulator_put(struct regulator *regulator);
 void devm_regulator_put(struct regulator *regulator);
 
@@ -227,6 +229,12 @@ static inline struct regulator *__must_check
 devm_regulator_get(struct device *dev, const char *id)
 {
 	return NULL;
+}
+
+static inline struct regulator *__must_check
+regulator_get_optional(struct device *dev, const char *id)
+{
+	return ERR_PTR(-ENODEV);
 }
 
 static inline void regulator_put(struct regulator *regulator)
@@ -377,6 +385,16 @@ static inline int regulator_count_voltages(struct regulator *regulator)
 	return 0;
 }
 #endif
+
+static inline int regulator_set_voltage_triplet(struct regulator *regulator,
+						int min_uV, int target_uV,
+						int max_uV)
+{
+	if (regulator_set_voltage(regulator, target_uV, max_uV) == 0)
+		return 0;
+
+	return regulator_set_voltage(regulator, min_uV, max_uV);
+}
 
 static inline int regulator_set_voltage_tol(struct regulator *regulator,
 					    int new_uV, int tol_uV)

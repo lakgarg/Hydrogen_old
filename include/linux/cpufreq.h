@@ -67,6 +67,8 @@ struct cpufreq_policy {
 	unsigned int		cpu;    /* cpu nr of CPU managing this policy */
 	unsigned int		last_cpu; /* cpu nr of previous CPU that managed
 					   * this policy */
+	
+	struct clk *clk;
 	struct cpufreq_cpuinfo	cpuinfo;/* see above */
 
 	unsigned int		min;    /* in kHz */
@@ -227,6 +229,9 @@ struct cpufreq_driver {
 	int	(*suspend)	(struct cpufreq_policy *policy);
 	int	(*resume)	(struct cpufreq_policy *policy);
 	struct freq_attr	**attr;
+	
+	/* platform specific boost support code */
+	bool	boost_enabled;
 };
 
 /* flags */
@@ -451,7 +456,11 @@ extern struct cpufreq_governor cpufreq_gov_interactive;
 #define CPUFREQ_ENTRY_INVALID ~0
 #define CPUFREQ_TABLE_END     ~1
 
+/* Special Values of .flags field */
+#define CPUFREQ_BOOST_FREQ	(1 << 0)
+
 struct cpufreq_frequency_table {
+	unsigned int	flags;
 	unsigned int	driver_data; /* driver specific data, not used by core */
 	unsigned int	frequency; /* kHz - doesn't need to be in ascending
 				    * order */
@@ -459,9 +468,10 @@ struct cpufreq_frequency_table {
 
 #if defined(CONFIG_CPU_FREQ) && defined(CONFIG_PM_OPP)
 int dev_pm_opp_init_cpufreq_table(struct device *dev,
-				  struct cpufreq_frequency_table **table);
+								struct cpufreq_frequency_table **table);
+				  
 void dev_pm_opp_free_cpufreq_table(struct device *dev,
-				   struct cpufreq_frequency_table **table);
+								struct cpufreq_frequency_table **table);
 #else
 static inline int dev_pm_opp_init_cpufreq_table(struct device *dev,
 						struct cpufreq_frequency_table
@@ -471,14 +481,23 @@ static inline int dev_pm_opp_init_cpufreq_table(struct device *dev,
 }
 
 static inline void dev_pm_opp_free_cpufreq_table(struct device *dev,
-						 struct cpufreq_frequency_table
-						 **table)
+												struct cpufreq_frequency_table
+												**table)
 {
 }
 #endif
 
 
-bool cpufreq_next_valid(struct cpufreq_frequency_table **pos);
+static inline bool cpufreq_next_valid(struct cpufreq_frequency_table **pos)
+{
+	while ((*pos)->frequency != CPUFREQ_TABLE_END)
+		if ((*pos)->frequency != CPUFREQ_ENTRY_INVALID)
+			return true;
+		else
+			(*pos)++;
+	return false;
+}
+
 
 /*
  * cpufreq_for_each_entry -	iterate over a cpufreq_frequency_table
@@ -514,6 +533,14 @@ int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
 
 ssize_t cpufreq_show_cpus(const struct cpumask *mask, char *buf);
 
+#ifdef CONFIG_CPU_FREQ
+int cpufreq_boost_enabled(void);
+#else
+static inline int cpufreq_boost_enabled(void)
+{
+	return 0;
+}
+#endif
 /* the following funtion is for cpufreq core use only */
 struct cpufreq_frequency_table *cpufreq_frequency_get_table(unsigned int cpu);
 

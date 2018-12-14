@@ -43,6 +43,7 @@ static int sh_cpufreq_target(struct cpufreq_policy *policy,
 			     unsigned int relation)
 {
 	unsigned int cpu = policy->cpu;
+	struct cpufreq_policy *policy = target->policy;
 	struct clk *cpuclk = &per_cpu(sh_cpuclk, cpu);
 	cpumask_t cpus_allowed;
 	struct cpufreq_freqs freqs;
