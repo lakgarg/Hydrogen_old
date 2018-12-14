@@ -169,4 +169,4 @@ struct device_list_opp *_add_list_dev(const struct device *dev,
 				      struct device_opp *dev_opp);
 struct device_node *_of_get_opp_desc_node(struct device *dev);
 
-#endif		/* __DRIVER_OPP_H__ */
+#endif	/* __DRIVER_OPP_H__ */
